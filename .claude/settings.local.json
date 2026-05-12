@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\); from app.streamlit_app import *\")",
+      "PowerShell(Get-Command python.exe | Select-Object -First 1 | ForEach-Object { $_.Source })",
+      "PowerShell(& \"C:\\\\Users\\\\Utilizador\\\\AppData\\\\Local\\\\Microsoft\\\\WindowsApps\\\\python.exe\" --version 2>&1)",
+      "Bash(find /c -name \"smoke_test_v29.py\")",
+      "Bash(find /c -maxdepth 5 -name \"__pycache__\")",
+      "Bash(python3 -c ' *)",
+      "Bash(which pdftotext *)",
+      "Bash(pdftotext \"/c/Navier_structural/referencia_do_programa.pdf\" -)",
+      "Bash(pdftotext -layout \"/c/Navier_structural/referencia_do_programa.pdf\" /tmp/ref.txt)",
+      "Read(//tmp/**)",
+      "Bash(pdfimages -j \"/c/Navier_structural/referencia_do_programa.pdf\" /tmp/ref_imgs)",
+      "Bash(pdftoppm -r 96 \"/c/Navier_structural/referencia_do_programa.pdf\" /tmp/ref_page)",
+      "Bash(ls /mingw64/bin/pdf* 2>/dev/null)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const fs=require\\('fs'\\); const b=fs.readFileSync\\('referencia_do_programa.pdf'\\); console.log\\('Size:',b.length,'bytes'\\); const s=b.toString\\('latin1'\\); const m=s.match\\(/\\\\/Count \\(\\\\d+\\)/\\); console.log\\('Pages approx:',m?m[1]:'?'\\);\")",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
+    ]
+  }
+}

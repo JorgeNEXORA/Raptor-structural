@@ -1,0 +1,25 @@
+{
+  "design_basis": "Eurocodes simplified MVP",
+  "national_annex": "PT (editable)",
+  "materials": {
+    "concrete_fck_mpa": 25.0,
+    "steel_fyk_mpa": 500.0,
+    "gamma_c": 1.50,
+    "gamma_s": 1.15
+  },
+  "actions": {
+    "gamma_g": 1.35,
+    "gamma_q": 1.50,
+    "psi0": 0.70,
+    "psi1": 0.50,
+    "psi2": 0.30
+  },
+  "geotechnics": {
+    "soil_allowable_mpa_default": 0.20,
+    "min_footing_utilization_warning": 0.15,
+    "max_footing_utilization_warning": 0.90
+  },
+  "serviceability": {
+    "default_span_deflection_limit_ratio": 250.0
+  }
+}

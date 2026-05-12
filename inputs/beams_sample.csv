@@ -1,0 +1,8 @@
+id,start_node,end_node,width_cm,height_cm,effective_depth_cm
+B1,P1,P4,25,75,72
+B2,P2,P5,25,75,72
+B3,P3,P6,25,75,72
+B4,P1,P2,25,75,72
+B5,P2,P3,25,75,72
+B6,P4,P5,25,75,72
+B7,P5,P6,25,75,72
