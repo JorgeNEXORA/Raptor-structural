@@ -406,13 +406,7 @@ if run_btn:
                 else None
             )
 
-            # Apply load config to slabs if no CSV was uploaded
             lcfg = st.session_state.get("load_cfg") or {}
-            if lcfg and not slab_path:
-                for s in slabs:
-                    s.gk_kn_m2 = lcfg.get("gk_piso", s.gk_kn_m2)
-                    s.qk_kn_m2 = lcfg.get("qk_piso", s.qk_kn_m2)
-
             project = Project(
                 name=project_name,
                 location=location,
@@ -425,6 +419,10 @@ if run_btn:
                 stairs=list(st.session_state.manual_stairs),
                 fck_mpa=fck_mpa,
                 fyk_mpa=fyk_mpa,
+                gk_floor_kn_m2=lcfg.get("gk_piso", 6.15),
+                qk_floor_kn_m2=lcfg.get("qk_piso", 2.0),
+                gk_roof_kn_m2=lcfg.get("gk_cob", 5.5),
+                qk_roof_kn_m2=lcfg.get("qk_cob", 1.0),
             )
             AutoPipeline().run(project, slab_loads=slab_loads)
             ProjectAdvisor().project_score(project)

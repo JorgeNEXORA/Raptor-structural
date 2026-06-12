@@ -85,10 +85,9 @@ class ProjectAdvisor:
     def project_score(self, project):
         def _worst_beam(b):
             r = b.result
-            return max(
-                getattr(r, "bending_utilization", 0.0),
-                getattr(r, "shear_utilization", 0.0),
-            )
+            # Shear > 1 → stirrups required (not collapse); cap at 1.0 for ULS score
+            shear = min(getattr(r, "shear_utilization", 0.0), 1.0)
+            return max(getattr(r, "bending_utilization", 0.0), shear)
         def _worst_col(c):
             r = c.result
             u = getattr(r, "utilization", 0.0)

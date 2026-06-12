@@ -33,7 +33,8 @@ class ModelGenerator:
                 counter += 1
         return panels
 
-    def create_slabs_from_panels(self, panels: List[PanelGeometry], beams: List[Beam]) -> List[SlabPanel]:
+    def create_slabs_from_panels(self, panels: List[PanelGeometry], beams: List[Beam],
+                                  gk_kn_m2: float = 6.15, qk_kn_m2: float = 2.0) -> List[SlabPanel]:
         slabs=[]
         for i,p in enumerate(panels,1):
             slabs.append(SlabPanel(
@@ -42,8 +43,8 @@ class ModelGenerator:
                 thickness_cm=27.0,
                 effective_depth_cm=24.0,
                 slab_type=SlabType.ONE_WAY,
-                gk_kn_m2=6.15,
-                qk_kn_m2=2.0
+                gk_kn_m2=gk_kn_m2,
+                qk_kn_m2=qk_kn_m2
             ))
         return slabs
 

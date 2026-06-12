@@ -41,7 +41,8 @@ class AutoPipeline:
 
         if not project.slabs:
             project.slabs = self.generator.create_slabs_from_panels(
-                self.generator.generate_panels(project.columns), project.beams)
+                self.generator.generate_panels(project.columns), project.beams,
+                gk_kn_m2=project.gk_floor_kn_m2, qk_kn_m2=project.qk_floor_kn_m2)
             project.add_alert("info", "Lajes geradas automaticamente a partir da malha geométrica.")
         else:
             project.add_alert("info", f"Foram importadas {len(project.slabs)} lajes por CSV/DXF.")

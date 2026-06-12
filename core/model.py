@@ -333,6 +333,11 @@ class Project:
     # EC2 material properties
     fck_mpa: float = 25.0   # concrete characteristic compressive strength (C25/30)
     fyk_mpa: float = 500.0  # steel characteristic yield strength (A500NR)
+    # Default floor/roof loads (used when slabs are auto-generated)
+    gk_floor_kn_m2: float = 6.15
+    qk_floor_kn_m2: float = 2.0
+    gk_roof_kn_m2: float  = 5.5
+    qk_roof_kn_m2: float  = 1.0
     def add_alert(self, level: str, message: str) -> None:
         self.alerts.append(Alert(level=level, message=message))
     def add_advice(self, message: str) -> None:
