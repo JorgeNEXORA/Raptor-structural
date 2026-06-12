@@ -16,7 +16,8 @@
       "Bash(ls /mingw64/bin/pdf* 2>/dev/null)",
       "Bash(node -e ' *)",
       "Bash(node -e \"const fs=require\\('fs'\\); const b=fs.readFileSync\\('referencia_do_programa.pdf'\\); console.log\\('Size:',b.length,'bytes'\\); const s=b.toString\\('latin1'\\); const m=s.match\\(/\\\\/Count \\(\\\\d+\\)/\\); console.log\\('Pages approx:',m?m[1]:'?'\\);\")",
-      "mcp__Claude_in_Chrome__tabs_context_mcp"
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "PowerShell(\\(Get-Item \"C:\\\\Navier_structural\\\\Presdouro_Aligeiradas_2015\\\\Presdouro Aligeiradas 2015\\\\lajes_list_xml.xml\"\\).Length)"
     ]
   }
 }

@@ -1,6 +1,15 @@
 import csv
 from core.model import Column, Beam, BeamType, SlabPanel, SlabType
 
+_SLAB_TYPE_MAP = {
+    "one_way": SlabType.ONE_WAY, "oneway": SlabType.ONE_WAY,
+    "two_way": SlabType.TWO_WAY, "twoway": SlabType.TWO_WAY,
+    "ribbed": SlabType.RIBBED, "aligeirada": SlabType.RIBBED,
+    "vigota": SlabType.RIBBED, "lm": SlabType.RIBBED,
+    "cantilever": SlabType.CANTILEVER, "consola": SlabType.CANTILEVER,
+    "balanco": SlabType.CANTILEVER,
+}
+
 
 class CSVGeometryImporter:
     REQUIRED_FIELDS = ["id", "x", "y"]
@@ -80,13 +89,18 @@ class CSVSlabImporter:
                     raise ValueError(f"Falta a coluna obrigatória '{req}' no CSV das lajes.")
 
             for row in reader:
-                sid = str(row["id"]).strip()
+                sid  = str(row["id"]).strip()
                 span = float(str(row["span_m"]).replace(",", "."))
-                gk = float(str(row["gk_kn_m2"]).replace(",", "."))
-                qk = float(str(row["qk_kn_m2"]).replace(",", "."))
-                thk = float(str(row.get("thickness_cm", thickness_cm)).replace(",", "."))
-                d = float(str(row.get("effective_depth_cm", effective_depth_cm)).replace(",", "."))
-                slabs.append(SlabPanel(sid, span, thk, d, SlabType.ONE_WAY, gk, qk))
+                gk   = float(str(row["gk_kn_m2"]).replace(",", "."))
+                qk   = float(str(row["qk_kn_m2"]).replace(",", "."))
+                thk  = float(str(row.get("thickness_cm", thickness_cm)).replace(",", "."))
+                d    = float(str(row.get("effective_depth_cm", effective_depth_cm)).replace(",", "."))
+                raw_type   = str(row.get("type", "one_way")).strip().lower()
+                slab_type  = _SLAB_TYPE_MAP.get(raw_type, SlabType.ONE_WAY)
+                catalog_id = str(row.get("catalog_id", "")).strip() or None
+                s = SlabPanel(sid, span, thk, d, slab_type, gk, qk)
+                s.catalog_id = catalog_id
+                slabs.append(s)
         return slabs
 
 

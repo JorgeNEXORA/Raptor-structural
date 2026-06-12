@@ -1,3 +1,7 @@
-id,span_m,gk_kn_m2,qk_kn_m2,thickness_cm,effective_depth_cm
-SLAB1,4.00,5.40,2.00,27,24
-SLAB2,4.00,6.56,4.00,27,24
+id,span_m,gk_kn_m2,qk_kn_m2,thickness_cm,effective_depth_cm,type,catalog_id
+LM1,4.5,5.5,2.0,20,17,ribbed,P3-BL40x15-20
+LM2,5.0,5.5,2.0,20,17,ribbed,P3-BL40x15-20
+LM3,4.0,5.5,2.0,20,17,ribbed,P2-BL40x15-20
+C1,1.2,6.0,3.0,25,22,cantilever,
+C2,1.0,6.0,3.0,25,22,cantilever,
+SLAB1,4.5,6.15,2.0,27,24,one_way,

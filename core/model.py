@@ -7,8 +7,10 @@ class BeamType(str, Enum):
     FRAME = "frame"
 
 class SlabType(str, Enum):
-    ONE_WAY = "one_way"
-    TWO_WAY = "two_way"
+    ONE_WAY   = "one_way"
+    TWO_WAY   = "two_way"
+    RIBBED    = "ribbed"       # laje aligeirada (vigotas pré-esforçadas)
+    CANTILEVER = "cantilever"  # consola / balanço
 
 class FootingType(str, Enum):
     CONCENTRIC = "concentric"
@@ -126,6 +128,7 @@ class SlabPanel:
     direction: Optional[str] = None
     polygon_points: List[tuple] = field(default_factory=list)
     area_m2: Optional[float] = None
+    catalog_id: Optional[str] = None   # Presdouro catalog reference, e.g. "P3-BL40x20-25"
     result: Optional[SlabResult] = None
 
 @dataclass

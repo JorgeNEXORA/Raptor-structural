@@ -16,6 +16,14 @@ from config.loads import (
     LoadConfigurator, LAJE, ISOLAMENTO, ACABAMENTO_PISO, ACABAMENTO_COB,
     IMPERMEABILIZACAO, BETONILHA_PENDENTE, EQUIPAMENTOS_COB, USE_CATEGORY,
 )
+try:
+    from config.slab_catalog import CATALOG, catalog_names, select_slab
+    _CATALOG_OK = bool(CATALOG)
+except Exception:
+    CATALOG = {}
+    _CATALOG_OK = False
+    def catalog_names(): return []
+    def select_slab(*a, **k): return None
 from pipeline.auto_pipeline import AutoPipeline
 from analysis.visualization import PlanVisualizer
 from analysis.importers import (
@@ -686,6 +694,32 @@ with tab_pilares:
 
 # ── Lajes ─────────────────────────────────────────────────────────────────────
 with tab_lajes:
+    # Presdouro catalog selector
+    if _CATALOG_OK:
+        with st.expander(f"📖 Catálogo Presdouro ({len(CATALOG)} tipos disponíveis)"):
+            st.caption("Seleciona a laje para cada painel ou deixa o programa escolher automaticamente.")
+            cc1, cc2, cc3 = st.columns(3)
+            cat_span = cc1.number_input("Vão (m)", value=4.0, min_value=1.0, step=0.5, key="cat_span")
+            cat_gk   = cc2.number_input("gk (kN/m²)", value=5.5, min_value=0.0, step=0.5, key="cat_gk")
+            cat_qk   = cc3.number_input("qk (kN/m²)", value=2.0, min_value=0.0, step=0.5, key="cat_qk")
+            if st.button("🔍 Encontrar laje mínima"):
+                from analysis.combinations import CombinationEngine
+                _comb = CombinationEngine()
+                _qd  = _comb.uls_fundamental(cat_gk, cat_qk)
+                _med = _qd * cat_span**2 / 8.0
+                _ved = _qd * cat_span / 2.0
+                _best = select_slab(_med, _ved, max_height_cm=35.0, safety=1.0)
+                if _best:
+                    st.success(f"**{_best.nome}** — h={_best.altura_cm:.0f}cm | "
+                               f"peso={_best.pesom2:.2f} kN/m² | "
+                               f"MRd={_best.mrd_knm_m:.1f} kNm/m | "
+                               f"VRd={_best.vrd_kn_m:.1f} kN/m | "
+                               f"EI={_best.ei_kn_m2_m:.0f} kN·m²/m")
+                    st.caption(f"MEd={_med:.1f} kNm/m | VEd={_ved:.1f} kN/m")
+                else:
+                    st.warning("Nenhuma laje do catálogo satisfaz estes requisitos.")
+        st.divider()
+
     rows = []
     for s in p.slabs:
         r = s.result
