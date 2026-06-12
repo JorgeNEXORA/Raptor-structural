@@ -535,7 +535,33 @@ Se não fizeres upload de CSV, é usada uma **geometria demo** com 6 pilares.
     st.stop()
 
 p: Project = st.session_state.project
-scores = getattr(p, "project_scores", {})
+
+# ── Recalculate scores inline (immune to module cache) ────────────────────
+def _uls_beam(b):
+    r = b.result
+    if r is None: return 0.0
+    bend  = getattr(r, "bending_utilization", 0.0)
+    shear = min(getattr(r, "shear_utilization", 0.0), 1.0)  # cap: stirrups ≠ collapse
+    return max(bend, shear)
+
+def _score(worst):
+    return round(max(0.0, min(1.0, 1.0 - max(0.0, worst - 0.20))), 2)
+
+_b = [_uls_beam(b) for b in p.beams if b.result] or [0.0]
+_c = [max(getattr(c.result,"utilization",0.0), 0.0) for c in p.columns if c.result] or [0.0]
+_f = [max(getattr(f.result,"soil_utilization",0.0), getattr(f.result,"punching_utilization",0.0))
+      for f in p.footings if f.result] or [0.0]
+_els = ([max(getattr(b.result,"deflection_utilization",0.0), getattr(b.result,"crack_utilization",0.0))
+         for b in p.beams if b.result]
+      + [max(getattr(s.result,"deflection_utilization",0.0), getattr(s.result,"crack_utilization",0.0))
+         for s in p.slabs if s.result]) or [0.0]
+
+scores = {
+    "seguranca_uls": _score(max(max(_b), max(_c), max(_f))),
+    "servico_els":   _score(max(_els)),
+    "fundacoes":     _score(max(_f)),
+}
+p.project_scores = scores
 
 # ── Score badges ──────────────────────────────────────────────────────────────
 if scores:
