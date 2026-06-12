@@ -419,11 +419,12 @@ if run_btn:
                 stairs=list(st.session_state.manual_stairs),
                 fck_mpa=fck_mpa,
                 fyk_mpa=fyk_mpa,
-                gk_floor_kn_m2=lcfg.get("gk_piso", 6.15),
-                qk_floor_kn_m2=lcfg.get("qk_piso", 2.0),
-                gk_roof_kn_m2=lcfg.get("gk_cob", 5.5),
-                qk_roof_kn_m2=lcfg.get("qk_cob", 1.0),
             )
+            # Apply load configuration (safe even if model fields don't exist yet)
+            project.gk_floor_kn_m2 = lcfg.get("gk_piso", 6.15)
+            project.qk_floor_kn_m2 = lcfg.get("qk_piso", 2.0)
+            project.gk_roof_kn_m2  = lcfg.get("gk_cob",  5.5)
+            project.qk_roof_kn_m2  = lcfg.get("qk_cob",  1.0)
             AutoPipeline().run(project, slab_loads=slab_loads)
             ProjectAdvisor().project_score(project)
             ProjectAdvisor().generate_advice(project)
