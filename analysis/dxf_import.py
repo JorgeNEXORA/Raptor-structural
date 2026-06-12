@@ -1,16 +1,25 @@
 import math
+import re
 from core.model import Column, Beam, BeamType, SlabPanel, SlabType
+
 
 class SimpleDXFImporter:
     """
-    DXF ASCII simplificado.
-    Layers:
-    - PILARES: CIRCLE
-    - VIGAS: LINE
-    - LAJES: LWPOLYLINE fechada
-    - LAJE_TEXTOS: TEXT
+    DXF importer que reconhece convenções portuguesas de desenho estrutural.
+
+    Pilares detectados por (ordem de prioridade):
+      1. TEXT/MTEXT com padrão  "P1 (25x25)"  ou  "P1 (Ø30)"  em qualquer layer
+      2. LWPOLYLINE/SOLID na layer PILARES → dimensões a partir do bounding box
+      3. CIRCLE na layer PILARES → pilar circular (raio → diâmetro)
+
+    Layers esperadas (case-insensitive):
+      PILARES  — geometria do pilar
+      VIGAS    — LINE
+      LAJES    — LWPOLYLINE fechada
+      LAJE_TEXTOS — TEXT com ID da laje
     """
 
+    # ── DXF raw read ──────────────────────────────────────────────────────────
     def read_pairs(self, dxf_path: str):
         with open(dxf_path, "r", encoding="utf-8", errors="ignore") as f:
             raw = [line.rstrip("\n\r") for line in f]
@@ -59,6 +68,249 @@ class SimpleDXFImporter:
             return []
         return value if isinstance(value, list) else [value]
 
+    # ── Column label parser ───────────────────────────────────────────────────
+    def _parse_col_label(self, text: str):
+        """
+        Returns (col_id, width_cm, depth_cm, diam_cm, shape) from a label string.
+
+        Recognised patterns:
+          "P1 (25x25)"  "P1(25x25)"   → rectangular 25×25
+          "P1 (25X50)"                 → rectangular 25×50
+          "P1 (Ø30)"   "P1 (d30)"     → circular Ø30
+          "P1"                         → id only, no dims
+          "(25x25)"                    → dims only, no id
+        """
+        text = text.strip()
+        col_id = None
+        width = None
+        depth = None
+        diam  = None
+        shape = "rectangular"
+
+        # Column ID: letter(s) + digits, e.g. P1, P12, PC1
+        id_match = re.match(r'^([A-Za-z]{1,3}\d+)', text)
+        if id_match:
+            col_id = id_match.group(1).upper()
+
+        # Circular: Ø30, d30, D30, ø30
+        circ = re.search(r'[ØøDd][\s]?(\d+(?:[.,]\d+)?)', text)
+        if circ:
+            diam  = float(circ.group(1).replace(",", "."))
+            shape = "circular"
+        else:
+            # Rectangular: 25x25, 25X50, 25*50, 25×50
+            rect = re.search(r'(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)', text)
+            if rect:
+                width = float(rect.group(1).replace(",", "."))
+                depth = float(rect.group(2).replace(",", "."))
+
+        return col_id, width, depth, diam, shape
+
+    def _unit_factor(self, val: float) -> float:
+        """Heuristic: if coords look like mm (>1000 for a typical building), divide by 10."""
+        return 0.1 if abs(val) > 1000 else 1.0
+
+    # ── Strategy 1: TEXT / MTEXT labels ──────────────────────────────────────
+    def _cols_from_text(self, entities, height_m):
+        """Scan all text entities for column labels like 'P1 (25x25)'."""
+        texts = []
+        for ent in entities:
+            if ent.get("type") not in ("TEXT", "MTEXT"):
+                continue
+            try:
+                x   = float(str(ent.get("10", "0")).replace(",", "."))
+                y   = float(str(ent.get("20", "0")).replace(",", "."))
+                txt = str(ent.get("1",  "")).strip()
+                # MTEXT uses group 1 too, but may contain formatting codes
+                txt = re.sub(r'\\[A-Za-z][^;]*;|[{}]', '', txt)  # strip MTEXT codes
+                if txt:
+                    texts.append((x, y, txt))
+            except Exception:
+                pass
+
+        # Group all texts that are "close" (within 3 drawing units)
+        # to handle the case where ID and dims are separate TEXT entities
+        merged = {}   # col_id -> {"x", "y", "w", "d", "diam", "shape"}
+
+        for x, y, txt in texts:
+            col_id, w, d, diam, shape = self._parse_col_label(txt)
+
+            if col_id and (w or diam):
+                # Full info in one entity
+                merged[col_id] = {"x": x, "y": y, "w": w, "d": d, "diam": diam, "shape": shape}
+
+            elif col_id:
+                # ID only — look for a nearby dims text
+                if col_id not in merged:
+                    merged[col_id] = {"x": x, "y": y, "w": None, "d": None, "diam": None, "shape": "rectangular"}
+                else:
+                    # Update position if closer to origin (fallback)
+                    pass
+
+            elif w or diam:
+                # Dims only — attach to nearest known column ID
+                best_id   = None
+                best_dist = 3.0   # tolerance: 3 drawing units
+                for cid, cdata in merged.items():
+                    dist = math.hypot(cdata["x"] - x, cdata["y"] - y)
+                    if dist < best_dist:
+                        best_dist = best_id and dist or dist
+                        best_id   = cid
+                if best_id and not merged[best_id]["w"] and not merged[best_id]["diam"]:
+                    merged[best_id]["w"]     = w
+                    merged[best_id]["d"]     = d
+                    merged[best_id]["diam"]  = diam
+                    merged[best_id]["shape"] = shape
+
+        columns = []
+        for col_id, data in sorted(merged.items()):
+            x, y = data["x"], data["y"]
+            uf = self._unit_factor(x)
+            x *= uf;  y *= uf
+
+            if data["diam"]:
+                diam = data["diam"]
+                # If diam looks like mm (>100 cm), convert
+                if diam > 100:
+                    diam /= 10.0
+                columns.append(Column(col_id, x, y, diam, diam, height_m, shape="circular"))
+            else:
+                w = data["w"] or 25.0
+                d = data["d"] or w
+                if w > 200:   w /= 10.0;  d /= 10.0   # mm → cm
+                columns.append(Column(col_id, x, y, w, d, height_m, shape="rectangular"))
+        return columns
+
+    # ── Strategy 2: LWPOLYLINE on PILARES layer ───────────────────────────────
+    def _cols_from_polyline(self, entities, height_m):
+        """Detect columns from small closed polylines on the PILARES layer."""
+        columns = []
+        counter = 1
+        for ent in entities:
+            if ent.get("type") != "LWPOLYLINE":
+                continue
+            if ent.get("8", "").upper() not in ("PILARES", "PILAR", "COLUMNS", "COLUMN"):
+                continue
+            xs = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("10"))]
+            ys = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("20"))]
+            if len(xs) < 2:
+                continue
+            cx = sum(xs) / len(xs)
+            cy = sum(ys) / len(ys)
+            uf = self._unit_factor(cx)
+            dx = (max(xs) - min(xs)) * uf
+            dy = (max(ys) - min(ys)) * uf
+            w  = max(dx, 5.0)   # minimum 5 cm
+            d  = max(dy, 5.0)
+            columns.append(Column(f"P{counter}", cx * uf, cy * uf, w, d, height_m))
+            counter += 1
+        return columns
+
+    # ── Strategy 3: CIRCLE on PILARES layer (legacy) ─────────────────────────
+    def _cols_from_circle(self, entities, height_m):
+        columns = []
+        counter = 1
+        for ent in entities:
+            if ent.get("type") != "CIRCLE":
+                continue
+            if ent.get("8", "").upper() not in ("PILARES", "PILAR", "COLUMNS", "COLUMN"):
+                continue
+            x = float(str(ent.get("10", "0")).replace(",", "."))
+            y = float(str(ent.get("20", "0")).replace(",", "."))
+            r = float(str(ent.get("40", "12.5")).replace(",", "."))
+            uf = self._unit_factor(x)
+            diam = r * 2 * uf
+            if diam > 200:
+                diam /= 10.0   # mm → cm
+            columns.append(Column(f"P{counter}", x * uf, y * uf, diam, diam, height_m, shape="circular"))
+            counter += 1
+        return columns
+
+    # ── Public: import_columns ────────────────────────────────────────────────
+    def import_columns(self, dxf_path: str,
+                       width_cm: float = 25.0, depth_cm: float = 25.0,
+                       height_m: float = 3.0):
+        entities = self.parse_entities(dxf_path)
+
+        # Try strategies in priority order
+        cols = self._cols_from_text(entities, height_m)
+        if cols:
+            return cols
+
+        cols = self._cols_from_polyline(entities, height_m)
+        if cols:
+            return cols
+
+        cols = self._cols_from_circle(entities, height_m)
+        if cols:
+            return cols
+
+        return []
+
+    # ── Nearest column helper ─────────────────────────────────────────────────
+    def find_nearest_column_id(self, x: float, y: float,
+                                columns: list[Column], tol: float = 0.50):
+        best = None
+        for c in columns:
+            dist = math.hypot(c.x - x, c.y - y)
+            if best is None or dist < best[0]:
+                best = (dist, c.id)
+        if best and best[0] <= tol:
+            return best[1]
+        return None
+
+    # ── Beams ─────────────────────────────────────────────────────────────────
+    def import_beams(self, dxf_path: str, columns: list[Column],
+                     width_cm: float = 25.0, height_cm: float = 55.0,
+                     effective_depth_cm: float = 52.0):
+        entities = self.parse_entities(dxf_path)
+        beams    = []
+        counter  = 1
+        seen     = set()
+
+        # Determine unit factor from column positions
+        uf = 1.0
+        if columns:
+            uf = self._unit_factor(columns[0].x * 10) if columns[0].x < 10 else 1.0
+
+        for ent in entities:
+            if ent.get("type") != "LINE":
+                continue
+            if ent.get("8", "").upper() not in ("VIGAS", "VIGA", "BEAMS", "BEAM"):
+                continue
+            x1 = float(str(ent.get("10", "0")).replace(",", ".")) * uf
+            y1 = float(str(ent.get("20", "0")).replace(",", ".")) * uf
+            x2 = float(str(ent.get("11", "0")).replace(",", ".")) * uf
+            y2 = float(str(ent.get("21", "0")).replace(",", ".")) * uf
+
+            n1 = self.find_nearest_column_id(x1, y1, columns)
+            n2 = self.find_nearest_column_id(x2, y2, columns)
+            if not n1 or not n2 or n1 == n2:
+                continue
+            key = tuple(sorted((n1, n2)))
+            if key in seen:
+                continue
+            seen.add(key)
+            span = math.hypot(x2 - x1, y2 - y1)
+            beams.append(Beam(f"B{counter}", n1, n2, width_cm, height_cm,
+                              effective_depth_cm, span, BeamType.FRAME))
+            counter += 1
+        return beams
+
+    # ── Slabs ─────────────────────────────────────────────────────────────────
+    def _slab_texts(self, entities):
+        texts = []
+        for ent in entities:
+            if ent.get("type") == "TEXT" and ent.get("8", "").upper() == "LAJE_TEXTOS":
+                try:
+                    x   = float(str(ent.get("10", "0")).replace(",", "."))
+                    y   = float(str(ent.get("20", "0")).replace(",", "."))
+                    txt = str(ent.get("1", "")).strip()
+                    texts.append((x, y, txt))
+                except Exception:
+                    pass
+        return texts
+
     def _polygon_area(self, pts):
         if len(pts) < 3:
             return 0.0
@@ -72,85 +324,28 @@ class SimpleDXFImporter:
     def _principal_direction(self, pts):
         xs = [p[0] for p in pts]
         ys = [p[1] for p in pts]
-        dx = max(xs) - min(xs)
-        dy = max(ys) - min(ys)
-        # direção de funcionamento simplificada: menor vão
-        return "x" if dx <= dy else "y"
+        return "x" if (max(xs) - min(xs)) <= (max(ys) - min(ys)) else "y"
 
-    def import_columns(self, dxf_path: str, width_cm: float = 25.0, depth_cm: float = 25.0, height_m: float = 3.0):
+    def import_slabs(self, dxf_path: str, thickness_cm: float = 27.0,
+                     effective_depth_cm: float = 24.0,
+                     gk_kn_m2: float = 6.15, qk_kn_m2: float = 2.0):
         entities = self.parse_entities(dxf_path)
-        columns = []
-        counter = 1
+        texts    = self._slab_texts(entities)
+        slabs    = []
+        counter  = 1
         for ent in entities:
-            if ent.get("type") == "CIRCLE" and ent.get("8", "").upper() == "PILARES":
-                x = float(str(ent.get("10", "0")).replace(",", "."))
-                y = float(str(ent.get("20", "0")).replace(",", "."))
-                columns.append(Column(f"P{counter}", x, y, width_cm, depth_cm, height_m))
-                counter += 1
-        return columns
-
-    def find_nearest_column_id(self, x: float, y: float, columns: list[Column], tol: float = 0.35):
-        best = None
-        for c in columns:
-            d = math.hypot(c.x - x, c.y - y)
-            if best is None or d < best[0]:
-                best = (d, c.id)
-        if best and best[0] <= tol:
-            return best[1]
-        return None
-
-    def import_beams(self, dxf_path: str, columns: list[Column], width_cm: float = 25.0, height_cm: float = 75.0, effective_depth_cm: float = 72.0):
-        entities = self.parse_entities(dxf_path)
-        beams = []
-        counter = 1
-        seen = set()
-        for ent in entities:
-            if ent.get("type") != "LINE" or ent.get("8", "").upper() != "VIGAS":
+            if ent.get("type") != "LWPOLYLINE":
                 continue
-            x1 = float(str(ent.get("10", "0")).replace(",", "."))
-            y1 = float(str(ent.get("20", "0")).replace(",", "."))
-            x2 = float(str(ent.get("11", "0")).replace(",", "."))
-            y2 = float(str(ent.get("21", "0")).replace(",", "."))
-            n1 = self.find_nearest_column_id(x1, y1, columns)
-            n2 = self.find_nearest_column_id(x2, y2, columns)
-            if not n1 or not n2 or n1 == n2:
-                continue
-            key = tuple(sorted((n1, n2)))
-            if key in seen:
-                continue
-            seen.add(key)
-            beams.append(Beam(f"B{counter}", n1, n2, width_cm, height_cm, effective_depth_cm, math.hypot(x2 - x1, y2 - y1), BeamType.FRAME))
-            counter += 1
-        return beams
-
-    def _slab_texts(self, entities):
-        texts = []
-        for ent in entities:
-            if ent.get("type") == "TEXT" and ent.get("8", "").upper() == "LAJE_TEXTOS":
-                try:
-                    x = float(str(ent.get("10", "0")).replace(",", "."))
-                    y = float(str(ent.get("20", "0")).replace(",", "."))
-                    texts.append((x, y, str(ent.get("1", "")).strip()))
-                except Exception:
-                    pass
-        return texts
-
-    def import_slabs(self, dxf_path: str, thickness_cm: float = 27.0, effective_depth_cm: float = 24.0, gk_kn_m2: float = 6.15, qk_kn_m2: float = 2.0):
-        entities = self.parse_entities(dxf_path)
-        texts = self._slab_texts(entities)
-        slabs = []
-        counter = 1
-        for ent in entities:
-            if ent.get("type") != "LWPOLYLINE" or ent.get("8", "").upper() != "LAJES":
+            if ent.get("8", "").upper() not in ("LAJES", "LAJE", "SLABS", "SLAB"):
                 continue
             xs = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("10"))]
             ys = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("20"))]
             if len(xs) < 3 or len(xs) != len(ys):
                 continue
-            pts = list(zip(xs, ys))
+            pts   = list(zip(xs, ys))
             min_x, max_x = min(xs), max(xs)
             min_y, max_y = min(ys), max(ys)
-            span = min(max_x - min_x, max_y - min_y)
+            span  = min(max_x - min_x, max_y - min_y)
             if span <= 0:
                 continue
             slab_id = f"SLAB{counter}"
@@ -160,8 +355,10 @@ class SimpleDXFImporter:
                     break
             slabs.append(SlabPanel(
                 slab_id, span, thickness_cm, effective_depth_cm, SlabType.ONE_WAY,
-                gk_kn_m2, qk_kn_m2, direction=self._principal_direction(pts),
-                polygon_points=pts, area_m2=self._polygon_area(pts)
+                gk_kn_m2, qk_kn_m2,
+                direction=self._principal_direction(pts),
+                polygon_points=pts,
+                area_m2=self._polygon_area(pts),
             ))
             counter += 1
         return slabs

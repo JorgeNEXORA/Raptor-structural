@@ -16,12 +16,26 @@ class CSVGeometryImporter:
 
             for row in reader:
                 col_id = str(row["id"]).strip()
-                x = float(str(row["x"]).replace(",", "."))
-                y = float(str(row["y"]).replace(",", "."))
-                w = float(str(row.get("width_cm", width_cm)).replace(",", "."))
-                d = float(str(row.get("depth_cm", depth_cm)).replace(",", "."))
-                h = float(str(row.get("height_m", height_m)).replace(",", "."))
-                columns.append(Column(col_id, x, y, w, d, h))
+                x      = float(str(row["x"]).replace(",", "."))
+                y      = float(str(row["y"]).replace(",", "."))
+                h      = float(str(row.get("height_m", height_m)).replace(",", "."))
+
+                # Shape detection: "circular" / "round" / "circ" → circular
+                raw_shape = str(row.get("shape", "rectangular")).strip().lower()
+                diam_raw  = str(row.get("diameter_cm", "")).strip()
+
+                if diam_raw:
+                    # diameter_cm column present → circular
+                    diam = float(diam_raw.replace(",", "."))
+                    columns.append(Column(col_id, x, y, diam, diam, h, shape="circular"))
+                elif raw_shape in ("circular", "round", "circ", "circle"):
+                    # shape column says circular → use width_cm as diameter
+                    diam = float(str(row.get("width_cm", width_cm)).replace(",", "."))
+                    columns.append(Column(col_id, x, y, diam, diam, h, shape="circular"))
+                else:
+                    w = float(str(row.get("width_cm", width_cm)).replace(",", "."))
+                    d = float(str(row.get("depth_cm", depth_cm)).replace(",", "."))
+                    columns.append(Column(col_id, x, y, w, d, h, shape="rectangular"))
         return columns
 
 

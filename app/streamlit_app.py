@@ -11,6 +11,11 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from core.model import Column, FlatSlab, Project, ShearWall, StairSlab
+from analysis.predim import ColumnPreDimensioner
+from config.loads import (
+    LoadConfigurator, LAJE, ISOLAMENTO, ACABAMENTO_PISO, ACABAMENTO_COB,
+    IMPERMEABILIZACAO, BETONILHA_PENDENTE, EQUIPAMENTOS_COB, USE_CATEGORY,
+)
 from pipeline.auto_pipeline import AutoPipeline
 from analysis.visualization import PlanVisualizer
 from analysis.importers import (
@@ -28,7 +33,7 @@ from analysis.history import store_snapshot
 
 # ─── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Structural AI",
+    page_title="Raptor",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -43,6 +48,7 @@ for _key, _val in [
     ("manual_walls", []),
     ("manual_flat_slabs", []),
     ("manual_stairs", []),
+    ("load_cfg", None),
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _val
@@ -133,7 +139,7 @@ def run_outputs(project: Project):
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🏗️ Structural AI")
+    st.markdown("## 🏗️ Raptor")
     st.caption("Análise estrutural EC2 — MVP")
     st.divider()
 
@@ -240,6 +246,93 @@ with st.sidebar:
                 st.session_state.manual_stairs = []
                 st.rerun()
 
+    # ── Configuração de Cargas ───────────────────────────────────────────────
+    st.divider()
+    st.markdown("**Configuração de cargas**")
+    with st.expander("🏠 Laje de piso"):
+        _laje_opts  = {v[1]: k for k, v in LAJE.items()}
+        _iso_opts   = {v[1]: k for k, v in ISOLAMENTO.items()}
+        _acab_opts  = {v[1]: k for k, v in ACABAMENTO_PISO.items()}
+        _uso_opts   = {v[1]: k for k, v in USE_CATEGORY.items()}
+
+        lj_laje  = st.selectbox("Tipo de laje",    list(_laje_opts.keys()), index=2, key="lj_laje")
+        lj_bet1  = st.number_input("1ª Betonilha (cm)", value=12, min_value=0, max_value=30, step=1, key="lj_bet1")
+        lj_iso   = st.selectbox("Isolamento térmico", list(_iso_opts.keys()), index=1, key="lj_iso")
+        lj_bet2  = st.number_input("2ª Betonilha regularização (cm)", value=5, min_value=0, max_value=15, step=1, key="lj_bet2")
+        lj_acab  = st.selectbox("Acabamento piso", list(_acab_opts.keys()), index=0, key="lj_acab")
+        lj_uso   = st.selectbox("Utilização", list(_uso_opts.keys()), index=0, key="lj_uso")
+        lj_pared = st.checkbox("Paredes divisórias (+1 kN/m²)", value=True, key="lj_pared")
+
+        _cfg_piso = LoadConfigurator()
+        _gk_p, _qk_p, _bdown_p = _cfg_piso.calc_floor(
+            _laje_opts[lj_laje], lj_bet1, _iso_opts[lj_iso],
+            lj_bet2, _acab_opts[lj_acab], _uso_opts[lj_uso], lj_pared)
+        st.success(f"**gk = {_gk_p} kN/m²  |  qk = {_qk_p} kN/m²**")
+        with st.expander("Ver decomposição"):
+            for _l in _bdown_p:
+                st.caption(_l)
+
+    with st.expander("🏗️ Laje de cobertura"):
+        _imp_opts   = {v[1]: k for k, v in IMPERMEABILIZACAO.items()}
+        _pend_opts  = {v[1]: k for k, v in BETONILHA_PENDENTE.items()}
+        _acob_opts  = {v[1]: k for k, v in ACABAMENTO_COB.items()}
+        _equip_opts = {v[1]: k for k, v in EQUIPAMENTOS_COB.items()}
+
+        cb_laje  = st.selectbox("Tipo de laje",        list(_laje_opts.keys()), index=2, key="cb_laje")
+        cb_imp   = st.selectbox("Impermeabilização",    list(_imp_opts.keys()),  index=1, key="cb_imp")
+        cb_iso   = st.selectbox("Isolamento",           list(_iso_opts.keys()),  index=2, key="cb_iso")
+        cb_pend  = st.selectbox("Betonilha de pendente",list(_pend_opts.keys()), index=2, key="cb_pend")
+        cb_acab  = st.selectbox("Acabamento/protecção", list(_acob_opts.keys()), index=0, key="cb_acab")
+        cb_equip = st.selectbox("Equipamentos",         list(_equip_opts.keys()),index=0, key="cb_equip")
+        cb_uso   = st.selectbox("Utilização cobertura",
+                                ["Cobertura — acesso manutenção", "Cobertura — acessível ao público"],
+                                index=0, key="cb_uso")
+        _uso_cob_key = "cobertura_manutencao" if "manutenção" in cb_uso else "cobertura_acessivel"
+
+        _cfg_cob = LoadConfigurator()
+        _gk_c, _qk_c, _bdown_c = _cfg_cob.calc_roof(
+            _laje_opts[cb_laje], _imp_opts[cb_imp], _iso_opts[cb_iso],
+            _pend_opts[cb_pend], _acob_opts[cb_acab], _equip_opts[cb_equip], _uso_cob_key)
+        st.success(f"**gk = {_gk_c} kN/m²  |  qk = {_qk_c} kN/m²**")
+        with st.expander("Ver decomposição"):
+            for _l in _bdown_c:
+                st.caption(_l)
+
+    with st.expander("🚗 Zonas especiais"):
+        _col1, _col2 = st.columns(2)
+        with _col1:
+            st.caption("**Varanda**")
+            _gk_var, _qk_var = LoadConfigurator().calc_varanda()
+            st.info(f"gk={_gk_var} | qk={_qk_var} kN/m²")
+        with _col2:
+            st.caption("**Garagem**")
+            _gar_veh = st.selectbox("Tipo", ["garagem_ligeiros","garagem_pesados"], key="gar_veh")
+            _gk_gar, _qk_gar = LoadConfigurator().calc_garagem(veiculos=_gar_veh)
+            st.info(f"gk={_gk_gar} | qk={_qk_gar} kN/m²")
+
+    # Store load config for use in analysis
+    st.session_state["load_cfg"] = {
+        "gk_piso": _gk_p, "qk_piso": _qk_p,
+        "gk_cob":  _gk_c, "qk_cob":  _qk_c,
+        "gk_var":  _gk_var, "qk_var": _qk_var,
+        "gk_gar":  _gk_gar, "qk_gar": _qk_gar,
+    }
+
+    # ── Pre-dimensionamento de pilares ───────────────────────────────────────
+    st.divider()
+    st.markdown("**Pré-dimensionamento de pilares**")
+    with st.expander("⚙️ Calcular secções automaticamente"):
+        st.caption("O programa calcula as dimensões mínimas para cada pilar com base nas cargas e na área tributária.")
+        pd_gk      = st.number_input("gk por piso (kN/m²)", value=5.0, min_value=1.0, step=0.5)
+        pd_qk      = st.number_input("qk por piso (kN/m²)", value=2.0, min_value=0.5, step=0.5)
+        pd_npisos  = st.number_input("Nº de pisos", value=3, min_value=1, max_value=30, step=1)
+        pd_h       = st.number_input("Altura do piso (m)", value=3.0, min_value=2.0, step=0.25)
+        pd_shape   = st.selectbox("Forma", ["rectangular", "circular"])
+        pd_safety  = st.slider("Margem de segurança", 1.00, 1.30, 1.10, 0.05)
+        pd_span    = st.number_input("Vão médio estimado (m)", value=4.0, min_value=2.0, step=0.5,
+                                     help="Usado quando não há pilares adjacentes na direcção")
+        predim_btn = st.button("📐 Pré-dimensionar", use_container_width=True)
+
     st.divider()
     run_btn = st.button("▶  Correr cálculo", type="primary", use_container_width=True)
 
@@ -297,11 +390,12 @@ if run_btn:
                 col_path = save_upload(col_csv)
                 beam_path = save_upload(beam_csv)
                 slab_path = save_upload(slab_csv)
-                columns = (
-                    CSVGeometryImporter().load_columns(col_path)
-                    if col_path
-                    else build_demo_columns()
-                )
+                if st.session_state.get("predim_cols") and not col_path:
+                    columns = st.session_state["predim_cols"]
+                elif col_path:
+                    columns = CSVGeometryImporter().load_columns(col_path)
+                else:
+                    columns = build_demo_columns()
                 beams = CSVBeamImporter().load_beams(beam_path, columns) if beam_path else []
                 slabs = CSVSlabImporter().load_slabs(slab_path) if slab_path else []
 
@@ -311,6 +405,13 @@ if run_btn:
                 if slab_loads_path
                 else None
             )
+
+            # Apply load config to slabs if no CSV was uploaded
+            lcfg = st.session_state.get("load_cfg") or {}
+            if lcfg and not slab_path:
+                for s in slabs:
+                    s.gk_kn_m2 = lcfg.get("gk_piso", s.gk_kn_m2)
+                    s.qk_kn_m2 = lcfg.get("qk_piso", s.qk_kn_m2)
 
             project = Project(
                 name=project_name,
@@ -357,6 +458,32 @@ if opt_btn and st.session_state.project:
             st.error(f"Erro otimização: {exc}")
             st.code(traceback.format_exc())
 
+if predim_btn:
+    with st.spinner("A calcular secções dos pilares…"):
+        try:
+            # Build column list from CSV/DXF or demo
+            if mode == "DXF":
+                dxf_path_tmp = save_upload(dxf_upload)
+                if dxf_path_tmp:
+                    pd_cols = SimpleDXFImporter().import_columns(dxf_path_tmp)
+                else:
+                    pd_cols = build_demo_columns()
+            else:
+                col_path_tmp = save_upload(col_csv)
+                pd_cols = (CSVGeometryImporter().load_columns(col_path_tmp)
+                           if col_path_tmp else build_demo_columns())
+
+            predimer = ColumnPreDimensioner(fck_mpa=fck_mpa, fyk_mpa=fyk_mpa)
+            pd_results = predimer.run(
+                pd_cols, pd_gk, pd_qk, int(pd_npisos),
+                pd_h, pd_shape, pd_safety, pd_span,
+            )
+            st.session_state["predim_results"] = pd_results
+            st.session_state["predim_cols"]    = pd_cols
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Erro pré-dimensionamento: {exc}")
+
 if gen_docx and st.session_state.project:
     with st.spinner("A gerar relatório DOCX…"):
         try:
@@ -371,7 +498,26 @@ if gen_docx and st.session_state.project:
 
 
 # ─── Main content ─────────────────────────────────────────────────────────────
-st.title("🏗️ Structural AI — Análise Estrutural")
+st.title("🏗️ Raptor — Análise Estrutural")
+
+if "predim_results" in st.session_state and st.session_state["predim_results"]:
+    st.subheader("📐 Pré-dimensionamento de pilares")
+    pd_rows = []
+    for r in st.session_state["predim_results"]:
+        sec = (f"Ø{int(r.width_cm)} cm" if r.shape == "circular"
+               else f"{int(r.width_cm)}×{int(r.depth_cm)} cm")
+        pd_rows.append({
+            "Pilar": r.col_id,
+            "A. trib. (m²)": r.a_trib_m2,
+            "NEd est. (kN)": r.ned_kn,
+            "Secção": sec,
+            "NRd (kN)": r.nrd_kn,
+            "Utilização": round(r.utilization, 2),
+        })
+    df_pd = pd.DataFrame(pd_rows)
+    st.dataframe(style_df(df_pd, ["Utilização"]), use_container_width=True, hide_index=True)
+    st.caption("💡 Estas dimensões foram aplicadas aos pilares. Clica **▶ Correr cálculo** para verificar a estrutura completa.")
+    st.divider()
 
 if st.session_state.project is None:
     st.info("Configura os parâmetros na barra lateral e clica **▶ Correr cálculo** para começar.")
@@ -494,7 +640,8 @@ with tab_pilares:
             "ID": c.id,
             "x (m)": round(c.x, 2),
             "y (m)": round(c.y, 2),
-            "b×h (cm)": f"{int(c.width_cm)}×{int(c.depth_cm)}",
+            "Secção": c.label(),
+            "Forma": c.shape,
             "h (m)": round(c.height_m, 2),
             "Nsd (kN)": round(r.nsd_kn, 2),
             "Nrd (kN)": round(r.nrd_kn, 2),

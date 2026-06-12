@@ -39,8 +39,7 @@ class ColumnAnalyzer:
 
     # ── §5.8.3 — slenderness limit ───────────────────────────────────────────
     def _slenderness(self, nsd_kn: float, ac_cm2: float, as_cm2: float,
-                     l0_cm: float, h_min_cm: float) -> tuple[float, float, bool]:
-        i_cm = h_min_cm / math.sqrt(12.0)          # radius of gyration (rectangle)
+                     l0_cm: float, i_cm: float) -> tuple[float, float, bool]:
         lam = l0_cm / i_cm
 
         ac_mm2 = ac_cm2 * 100.0
@@ -73,7 +72,7 @@ class ColumnAnalyzer:
         nsd = self.comb.uls_fundamental(gk, qk)
 
         ac_cm2 = column.area_cm2()
-        h_min = min(column.width_cm, column.depth_cm)
+        i_cm   = column.radius_of_gyration_cm()    # handles both shapes
 
         as_min, as_max = self._as_limits_cm2(nsd, ac_cm2)
         req_as = max(as_min, 0.003 * ac_cm2)       # §9.5.2: ≥ 0.3 % Ac
@@ -84,7 +83,7 @@ class ColumnAnalyzer:
 
         l0_cm = column.height_m * 100.0             # pin-pin (conservative)
         lam, lam_lim, buckling_ok = self._slenderness(
-            nsd, ac_cm2, adopted_as, l0_cm, h_min)
+            nsd, ac_cm2, adopted_as, l0_cm, i_cm)
 
         med_min, mrd, bend_util = self._eccentricity(nsd, column.depth_cm, adopted_as)
 

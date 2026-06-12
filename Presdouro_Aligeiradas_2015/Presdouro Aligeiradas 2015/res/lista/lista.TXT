@@ -1,0 +1,116 @@
+//101 < Rectangular Y >
+//102 < Rectangular X >
+//103 < Rectangular XY >
+//104 < Buraco Normal Y >
+//105 < Buraco Normal X >
+//106 < Abertura Quadrada Y >
+//107 < Abertura Quadrada X >
+//108 < Buraco XY >
+//109 < Abertura XY >
+//110 < Abertura YX >
+//111 < Abertura Lateral Y >
+//112 < Abertura Lateral X >
+
+//201 < Triangular Inferior Y >
+//202 < Triangular Inferior X >
+//203 < Triangular Inferior XY >
+//204 < Triangular Inferior (-Y) >
+//205 < Triangular Inferior (-X) >
+//206 < Triangular Inferior (-XY) >
+//207 < Triangular Superior Y >
+//208 < Triangular Superior X >
+//209 < Triangular Superior XY >
+//210 < Triangular Superior (-Y) >
+//211 < Triangular Superior (-X) >
+//212 < Triangular Superior (-XY) >
+
+//301 < Trapézio Inferior Y >
+//302 < Trapézio Inferior X >
+//303 < Trapézio Inferior XY >
+//304 < Trapézio Inferior (-Y) >
+//305 < Trapézio Inferior (-X) >
+//306 < Trapézio Inferior (-XY) >
+//307 < Trapézio Superior Y >
+//308 < Trapézio Superior X >
+//309 < Trapézio Superior XY >
+//310 < Trapézio Superior (-Y) >
+//311 < Trapézio Superior (-X) >
+//312 < Trapézio Superior (-XY) >
+
+//401 < Painel em L Superior Y >
+//402 < Painel em L Superior X >
+//403 < Painel em L Superior XY >
+//404 < Painel em L Superior (-Y) >
+//405 < Painel em L Superior (-X) >
+//406 < Painel em L Superior (-XY) >
+//407 < Painel em L Inferior Y >
+//408 < Painel em L Inferior X >
+//409 < Painel em L Inferior XY >
+//410 < Painel em L Inferior (-Y) >
+//411 < Painel em L Inferior (-X) >
+//412 < Painel em L Inferior (-XY) >
+
+//501 < Chanfre Superior Y >
+//502 < Chanfre Superior X >
+//503 < Chanfre Superior XY >
+//504 < Chanfre Superior (-Y) >
+//505 < Chanfre Superior (-X) >
+//506 < Chanfre Superior (-XY) >
+//507 < Chanfre Inferior Y >
+//508 < Chanfre Inferior X >
+//509 < Chanfre Inferior XY >
+//510 < Chanfre Inferior (-Y) >
+//511 < Chanfre Inferior (-X) >
+//512 < Chanfre Inferior (-XY) >
+
+//601 < Cónica em Y >
+//602 < Cónica em X >
+//603 < Cónica em XY >
+//604 < Cónica em (-Y) >
+//605 < Cónica em (-X) >
+//606 < Cónica em (-XY) >
+//607 < Cónica em Y >
+//608 < Cónica em X >
+//609 < Cónica em XY >
+//610 < Cónica em (-Y) >
+//611 < Cónica em (-X) >
+//612 < Cónica em (-XY) >
+
+//701 < Elipse em Y >
+//702 < Elipse em X >
+//703 < Elipse em XY >
+//704 < Elipse em (-Y) >
+//705 < Elipse em (-X) >
+//706 < Elipse em (-XY) >
+//707 < Elipse em Y >
+//708 < Elipse em X >
+//709 < Elipse em XY >
+//710 < Elipse em (-Y) >
+//711 < Elipse em (-X) >
+//712 < Elipse em (-XY) >
+
+//801 < Chanfre Elipse Superior Y >
+//802 < Chanfre Elipse Superior X >
+//803 < Chanfre Elipse Superior XY >
+//804 < Chanfre Elipse Superior (-Y) >
+//805 < Chanfre Elipse Superior (-X) >
+//806 < Chanfre Elipse Superior (-XY) >
+//807 < Chanfre Elipse Inferior Y >
+//808 < Chanfre Elipse Inferior X >
+//809 < Chanfre Elipse Inferior XY >
+//810 < Chanfre Elipse Inferior (-Y) >
+//811 < Chanfre Elipse Inferior (-X) >
+//812 < Chanfre Elipse Inferior (-XY) >
+
+//901 < Elipse Rectangular Y >
+//902 < Elipse Rectangular X >
+//903 < Elipse Rectangular XY >
+//904 < Elipse Rectangular Y >
+//905 < Elipse Rectangular X >
+//906 < Elipse Rectangular XY >
+//907 < >
+//908 < >
+//909 < >
+//910 < >
+//911 < >
+//912 < >

@@ -155,11 +155,13 @@ class Column:
     id: str
     x: float
     y: float
-    width_cm: float
-    depth_cm: float
+    width_cm: float        # rectangular: width;  circular: diameter
+    depth_cm: float        # rectangular: depth;  circular: diameter (same as width_cm)
     height_m: float
+    shape: str = "rectangular"   # "rectangular" or "circular"
     loads: List[ColumnLoad] = field(default_factory=list)
     result: Optional[ColumnResult] = None
+
     def add_load(self, load: ColumnLoad) -> None:
         self.loads.append(load)
     def total_gk(self) -> float:
@@ -167,7 +169,21 @@ class Column:
     def total_qk(self) -> float:
         return sum(l.qk_kn for l in self.loads)
     def area_cm2(self) -> float:
+        import math
+        if self.shape == "circular":
+            return math.pi * self.width_cm ** 2 / 4.0   # width_cm = diameter
         return self.width_cm * self.depth_cm
+    def radius_of_gyration_cm(self) -> float:
+        """Minimum radius of gyration for slenderness (EC2 §5.8.3)."""
+        import math
+        if self.shape == "circular":
+            return self.width_cm / 4.0                   # i = D/4
+        h_min = min(self.width_cm, self.depth_cm)
+        return h_min / math.sqrt(12.0)                   # i = h/√12
+    def label(self) -> str:
+        if self.shape == "circular":
+            return f"Ø{int(self.width_cm)} cm"
+        return f"{int(self.width_cm)}×{int(self.depth_cm)} cm"
 
 @dataclass
 class FoundationTieBeam:

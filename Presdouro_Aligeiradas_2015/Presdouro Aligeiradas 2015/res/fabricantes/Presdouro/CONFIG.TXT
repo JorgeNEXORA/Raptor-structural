@@ -1,0 +1,19 @@
+[CONFIG]
+//N_Fabricante <17;Presdouro, SA>
+//P_Fabricante <Presdouro>
+//P_Path       <RES\>
+//Lista_Path   <lista\,lista.ZANETT>
+//FI_Path      <lista2\>
+//P_Html       <\HTML\>
+//P_Trabalho   <trabalho\>
+[PRINCIPAL]
+//FICON        <presdouro.ZANETO>
+//CorF         <0,0,0>
+//CorB         <255,0,0>
+//I_Banner1    <b_zanet.ZANETP,www.zanet.pt>
+//I_Banner2    <b_ticdata.ZANETP,www.ticdata.pt>
+//I_Banner3    <b_gipac.ZANETP,www.gipac.pt>
+
+                
+
+
