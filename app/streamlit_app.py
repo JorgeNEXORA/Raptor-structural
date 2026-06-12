@@ -616,17 +616,20 @@ with tab_vigas:
             "b×h (cm)": f"{int(b.width_cm)}×{int(b.height_cm)}",
             "Span (m)": round(b.span_m, 2),
             "Msd (kNm)": round(r.msd_knm, 2),
+            "MRd (kNm)": round(getattr(r, "mrd_knm", 0.0), 2),
             "Vsd (kN)": round(r.vsd_kn, 2),
+            "VRd,c (kN)": round(getattr(r, "vrd_c_kn", 0.0), 2),
             "As req (cm²)": round(r.required_as_cm2, 2),
             "Armadura": rr.get("bottom_text", "-"),
             "Estribos": rr.get("stirrups_text", "-"),
+            "U. Flexão": round(getattr(r, "bending_utilization", 0.0), 2),
             "U. Corte": round(r.shear_utilization, 2),
             "U. Flecha": round(r.deflection_utilization, 2),
             "U. Fissura": round(r.crack_utilization, 2),
         })
     df_beams = pd.DataFrame(rows)
     st.dataframe(
-        style_df(df_beams, ["U. Corte", "U. Flecha", "U. Fissura"]),
+        style_df(df_beams, ["U. Flexão", "U. Corte", "U. Flecha", "U. Fissura"]),
         use_container_width=True, hide_index=True,
     )
 
