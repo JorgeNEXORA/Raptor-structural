@@ -1935,10 +1935,8 @@ def draw_slab_schedule(project: Project) -> bytes:
 
 def draw_slab_schedule_dxf(project: Project) -> bytes:
     """DXF slab schedule table."""
-    import ezdxf
     slabs = project.slabs
-    doc = _dxf_new_doc()
-    msp = doc.modelspace()
+    doc, msp = _dxf_new_doc()
 
     _TYPE_PT = {
         "one_way": "Vigotada 1 dir.", "ribbed": "Aligeirada",
