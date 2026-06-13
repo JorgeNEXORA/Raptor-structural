@@ -1946,7 +1946,7 @@ def draw_slab_schedule_dxf(project: Project) -> bytes:
     COLS = ["ID", "Tipo", "Dir", "Vão(m)", "h(cm)", "gk", "qk", "Msd", "As(cm²/m)", "Util.Flex"]
     WIDTHS = [1.2, 3.0, 0.8, 1.5, 1.2, 1.2, 1.2, 1.5, 2.0, 1.8]
     ROW_H = 0.6
-    TH = TH_SM
+    TH = 0.100  # text height (same as TH_SM)
 
     # Header row
     x0 = 0.0; y0 = 0.0
