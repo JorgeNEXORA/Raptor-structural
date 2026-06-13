@@ -1704,8 +1704,8 @@ def draw_footing_schedule_dxf(project: 'Project') -> bytes:
 
         # Reinforcement bars (bottom of footing cross-section)
         rr = ft.reinforcement_result or {}
-        as_x = ft.result.required_as_x_cm2 if ft.result else 0
-        as_y = ft.result.required_as_y_cm2 if ft.result else 0
+        as_x = ft.result.required_as_cm2 if ft.result else 0
+        as_y = ft.result.required_as_cm2 if ft.result else 0
         bar_y = sec_cy + fhgt*0.12
         msp.add_line((cx-fw/2*0.8, bar_y), (cx+fw/2*0.8, bar_y),
                      dxfattribs={'layer': 'ARMADURA_INF', 'lineweight': 35, 'color': 1})
