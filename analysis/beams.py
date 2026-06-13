@@ -4,12 +4,20 @@ from analysis.combinations import CombinationEngine
 from analysis.deflections import rectangular_inertia_m4, simply_supported_udl_deflection_mm, span_limit_mm
 from analysis.serviceability import estimate_crack_width_mm, steel_stress_from_moment
 
+# 2-leg stirrup options: (phi_mm, spacing_mm)
+_STIRRUP_OPTIONS = [
+    (6, 200), (6, 150), (6, 100),
+    (8, 200), (8, 150), (8, 100),
+    (10, 200), (10, 150), (10, 100),
+]
+
 
 class BeamAnalyzer:
     """
     EC2 beam verification:
       - MRd = As·fyd·z  (§6.1)
       - VRd,c  without shear reinforcement  (§6.2.2)
+      - VRd,s  with designed stirrups  (§6.2.3)
       - Deflection L/250  (§7.4)
       - Crack width wk ≤ 0.3 mm  (§7.3)
       - As,min / As,max  (§9.2.1.1)
@@ -67,6 +75,40 @@ class BeamAnalyzer:
 
         return max(v_rdc, v_min) * bw_mm * d_mm / 1000.0   # kN
 
+    # ── §6.2.3 — shear resistance with stirrups ───────────────────────────────
+    def _design_shear_kn(self, beam: Beam, vsd_kn: float, as_cm2: float) -> tuple[float, int, int]:
+        """
+        EC2 §6.2.3 — design 2-leg vertical stirrups (θ=45°, cot θ=1).
+        Returns (VRd_designed_kN, phi_mm, spacing_mm).
+        """
+        bw_mm = beam.width_cm * 10.0
+        d_mm  = beam.effective_depth_cm * 10.0
+        z_mm  = 0.9 * d_mm
+
+        # §9.2.2 minimum stirrup ratio
+        rho_min  = 0.08 * math.sqrt(self.fck) / self.fyk
+        asw_s_min = rho_min * bw_mm   # mm²/mm
+
+        # Required Asw/s for shear (cot θ = 1)
+        asw_s_req = (vsd_kn * 1000.0) / (z_mm * self.fyd)
+        asw_s_needed = max(asw_s_min, asw_s_req)
+
+        # VRd,max — compression strut (θ=45°)
+        nu1 = 0.6 * (1.0 - self.fck / 250.0)
+        vrd_max = bw_mm * z_mm * nu1 * self.fcd / 2.0 / 1000.0
+
+        for phi, s in _STIRRUP_OPTIONS:
+            asw = 2.0 * math.pi * (phi / 2.0) ** 2   # mm² (2 legs)
+            if asw / s >= asw_s_needed:
+                vrd_s = (asw / s) * z_mm * self.fyd / 1000.0
+                return min(vrd_s, vrd_max), phi, s
+
+        # Heaviest option as fallback
+        phi, s = _STIRRUP_OPTIONS[-1]
+        asw = 2.0 * math.pi * (phi / 2.0) ** 2
+        vrd_s = (asw / s) * z_mm * self.fyd / 1000.0
+        return min(vrd_s, vrd_max), phi, s
+
     # ── main ─────────────────────────────────────────────────────────────────
     def analyze(self, beam: Beam) -> BeamResult:
         gk = beam.total_gk()
@@ -83,7 +125,8 @@ class BeamAnalyzer:
         as_min = self._as_min_cm2(beam)
         as_req = max(self._required_as_cm2(msd, beam.effective_depth_cm), as_min)
 
-        vrd = self._vrd_c_kn(beam, as_req)
+        vrd_c = self._vrd_c_kn(beam, as_req)
+        vrd_designed, _phi, _s = self._design_shear_kn(beam, vsd, as_req)
         mrd = self._mrd_knm(beam, as_req)
 
         inertia = rectangular_inertia_m4(beam.width_cm / 100.0, beam.height_cm / 100.0)
@@ -97,6 +140,7 @@ class BeamAnalyzer:
         crack   = estimate_crack_width_mm(sigma_s, bar_diameter_mm=12.0, spacing_factor=1.1)
 
         bending_util = msd / mrd if mrd > 0 else 999.0
+        shear_util   = vsd / vrd_designed if vrd_designed > 0 else 999.0
 
         result = BeamResult(
             sd_uls_kn_m=qd, sd_sls_rare_kn_m=q_rare,
@@ -104,9 +148,9 @@ class BeamAnalyzer:
             msd_knm=round(msd, 2), vsd_kn=round(vsd, 2),
             reaction_left_kn=round(vsd, 2), reaction_right_kn=round(vsd, 2),
             required_as_cm2=round(as_req, 2),
-            vrd_kn=round(vrd, 2),
+            vrd_kn=round(vrd_designed, 2),
             bending_utilization=round(bending_util, 3),
-            shear_utilization=round(vsd / vrd, 3) if vrd > 0 else 999.0,
+            shear_utilization=round(shear_util, 3),
             deflection_inst_mm=round(d_inst, 1),
             deflection_final_mm=round(d_final, 1),
             deflection_limit_mm=round(d_lim, 1),
@@ -115,7 +159,7 @@ class BeamAnalyzer:
             crack_limit_mm=0.3,
             crack_utilization=round(crack / 0.3, 3),
             mrd_knm=round(mrd, 2),
-            vrd_c_kn=round(vrd, 2),
+            vrd_c_kn=round(vrd_c, 2),
             as_min_cm2=round(as_min, 2),
         )
         beam.result = result

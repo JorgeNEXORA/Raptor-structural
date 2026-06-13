@@ -3,12 +3,43 @@ from core.model import Column, Beam, BeamType, SlabPanel, SlabType
 
 _SLAB_TYPE_MAP = {
     "one_way": SlabType.ONE_WAY, "oneway": SlabType.ONE_WAY,
+    "laje_simples": SlabType.ONE_WAY, "simples": SlabType.ONE_WAY,
     "two_way": SlabType.TWO_WAY, "twoway": SlabType.TWO_WAY,
+    "duas_direcoes": SlabType.TWO_WAY, "cruzada": SlabType.TWO_WAY,
     "ribbed": SlabType.RIBBED, "aligeirada": SlabType.RIBBED,
     "vigota": SlabType.RIBBED, "lm": SlabType.RIBBED,
     "cantilever": SlabType.CANTILEVER, "consola": SlabType.CANTILEVER,
-    "balanco": SlabType.CANTILEVER,
+    "balanco": SlabType.CANTILEVER, "balanço": SlabType.CANTILEVER,
 }
+
+# Portuguese → English column name aliases (applied before parsing)
+_COL_ALIASES = {
+    # pilares
+    "altura_m": "height_m", "altura": "height_m",
+    "largura_cm": "width_cm", "largura": "width_cm",
+    "profundidade_cm": "depth_cm", "profundidade": "depth_cm",
+    "forma": "shape", "circular": "shape",
+    "diametro_cm": "diameter_cm", "diâmetro_cm": "diameter_cm",
+    "diametro": "diameter_cm", "diâmetro": "diameter_cm",
+    # vigas
+    "no_inicio": "start_node", "nó_inicio": "start_node",
+    "no_fim": "end_node", "nó_fim": "end_node",
+    "altura_cm": "height_cm",
+    "altura_util_cm": "effective_depth_cm", "d_cm": "effective_depth_cm",
+    # lajes
+    "vao_m": "span_m", "vão_m": "span_m", "vao": "span_m",
+    "espessura_cm": "thickness_cm", "espessura": "thickness_cm",
+    "tipo": "type",
+    "catalogo": "catalog_id", "catálogo": "catalog_id",
+    # cargas lajes
+    "descricao": "description", "descrição": "description",
+}
+
+
+def _normalize_row(row: dict) -> dict:
+    """Replace Portuguese column names with their English equivalents."""
+    return {_COL_ALIASES.get(k.strip().lower(), k.strip().lower()): v
+            for k, v in row.items()}
 
 
 class CSVGeometryImporter:
@@ -18,27 +49,25 @@ class CSVGeometryImporter:
         columns = []
         with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f)
-            fields = [x.strip() for x in (reader.fieldnames or [])]
+            fields = [_COL_ALIASES.get(x.strip().lower(), x.strip().lower()) for x in (reader.fieldnames or [])]
             for req in self.REQUIRED_FIELDS:
                 if req not in fields:
                     raise ValueError(f"Falta a coluna obrigatória '{req}' no CSV.")
 
-            for row in reader:
+            for raw_row in reader:
+                row = _normalize_row(raw_row)
                 col_id = str(row["id"]).strip()
                 x      = float(str(row["x"]).replace(",", "."))
                 y      = float(str(row["y"]).replace(",", "."))
                 h      = float(str(row.get("height_m", height_m)).replace(",", "."))
 
-                # Shape detection: "circular" / "round" / "circ" → circular
                 raw_shape = str(row.get("shape", "rectangular")).strip().lower()
                 diam_raw  = str(row.get("diameter_cm", "")).strip()
 
                 if diam_raw:
-                    # diameter_cm column present → circular
                     diam = float(diam_raw.replace(",", "."))
                     columns.append(Column(col_id, x, y, diam, diam, h, shape="circular"))
-                elif raw_shape in ("circular", "round", "circ", "circle"):
-                    # shape column says circular → use width_cm as diameter
+                elif raw_shape in ("circular", "round", "circ", "circle", "redondo"):
                     diam = float(str(row.get("width_cm", width_cm)).replace(",", "."))
                     columns.append(Column(col_id, x, y, diam, diam, h, shape="circular"))
                 else:
@@ -56,12 +85,13 @@ class CSVBeamImporter:
         beams = []
         with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f)
-            fields = [x.strip() for x in (reader.fieldnames or [])]
+            fields = [_COL_ALIASES.get(x.strip().lower(), x.strip().lower()) for x in (reader.fieldnames or [])]
             for req in self.REQUIRED_FIELDS:
                 if req not in fields:
                     raise ValueError(f"Falta a coluna obrigatória '{req}' no CSV das vigas.")
 
-            for row in reader:
+            for raw_row in reader:
+                row = _normalize_row(raw_row)
                 bid = str(row["id"]).strip()
                 n1 = str(row["start_node"]).strip()
                 n2 = str(row["end_node"]).strip()
@@ -83,12 +113,16 @@ class CSVSlabImporter:
         slabs = []
         with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f)
-            fields = [x.strip() for x in (reader.fieldnames or [])]
+            fields = [_COL_ALIASES.get(x.strip().lower(), x.strip().lower()) for x in (reader.fieldnames or [])]
+            # accept vao_m as alias for span_m in required check
+            req_aliases = {"span_m": ["span_m", "vao_m", "vão_m"]}
             for req in self.REQUIRED_FIELDS:
-                if req not in fields:
+                alts = req_aliases.get(req, [req])
+                if not any(a in fields for a in alts):
                     raise ValueError(f"Falta a coluna obrigatória '{req}' no CSV das lajes.")
 
-            for row in reader:
+            for raw_row in reader:
+                row = _normalize_row(raw_row)
                 sid  = str(row["id"]).strip()
                 span = float(str(row["span_m"]).replace(",", "."))
                 gk   = float(str(row["gk_kn_m2"]).replace(",", "."))
@@ -111,16 +145,17 @@ class CSVSlabLoadImporter:
         slab_loads = {}
         with open(csv_path, "r", encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f)
-            fields = [x.strip() for x in (reader.fieldnames or [])]
+            fields = [_COL_ALIASES.get(x.strip().lower(), x.strip().lower()) for x in (reader.fieldnames or [])]
             for req in self.REQUIRED_FIELDS:
                 if req not in fields:
-                    raise ValueError(f"Falta a coluna obrigatória '{req}' no CSV das lajes.")
+                    raise ValueError(f"Falta a coluna obrigatória '{req}' no CSV de cargas das lajes.")
 
-            for row in reader:
+            for raw_row in reader:
+                row = _normalize_row(raw_row)
                 slab_id = str(row["id"]).strip()
                 gk = float(str(row["gk_kn_m2"]).replace(",", "."))
                 qk = float(str(row["qk_kn_m2"]).replace(",", "."))
-                desc = str(row.get("description", "")).strip()
+                desc = str(row.get("description", row.get("descricao", ""))).strip()
                 slab_loads[slab_id] = {
                     "gk_kn_m2": gk,
                     "qk_kn_m2": qk,

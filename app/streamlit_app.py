@@ -97,7 +97,7 @@ def _util_color(val):
         return ""
 
 
-def style_df(df: pd.DataFrame, util_cols: list) -> pd.io.formats.style.Styler:
+def style_df(df: pd.DataFrame, util_cols: list):
     cols_present = [c for c in util_cols if c in df.columns]
     if not cols_present:
         return df.style
@@ -374,6 +374,49 @@ with st.sidebar:
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True,
             )
+
+        st.divider()
+        st.markdown("**Peças Desenhadas**")
+        gen_drawings = st.button("🖊  Gerar desenhos", use_container_width=True,
+                                 help="Gera planta de fundações, lajes e quadro de pilares")
+        if gen_drawings or st.session_state.get("drawings_ready"):
+            try:
+                from analysis.drawings import (draw_foundation_plan,
+                                               draw_slab_plan,
+                                               draw_column_schedule,
+                                               draw_footing_schedule)
+                _p = st.session_state.project
+                if not st.session_state.get("drawings_ready"):
+                    with st.spinner("A gerar desenhos…"):
+                        st.session_state["img_fundacoes"] = draw_foundation_plan(_p)
+                        st.session_state["img_piso"]      = draw_slab_plan(_p, "PLANTA DA LAJE DE PISO")
+                        st.session_state["img_cobertura"] = draw_slab_plan(_p, "PLANTA DA LAJE DE COBERTURA")
+                        st.session_state["img_pilares"]   = draw_column_schedule(_p)
+                        st.session_state["img_sapatas"]   = draw_footing_schedule(_p)
+                        st.session_state["drawings_ready"] = True
+                st.download_button("⬇  Planta Fundações",
+                    data=st.session_state["img_fundacoes"],
+                    file_name="planta_fundacoes.png", mime="image/png",
+                    use_container_width=True)
+                st.download_button("⬇  Planta Laje Piso",
+                    data=st.session_state["img_piso"],
+                    file_name="planta_laje_piso.png", mime="image/png",
+                    use_container_width=True)
+                st.download_button("⬇  Planta Laje Cobertura",
+                    data=st.session_state["img_cobertura"],
+                    file_name="planta_laje_cobertura.png", mime="image/png",
+                    use_container_width=True)
+                st.download_button("⬇  Quadro de Pilares",
+                    data=st.session_state["img_pilares"],
+                    file_name="quadro_pilares.png", mime="image/png",
+                    use_container_width=True)
+                if st.session_state.get("img_sapatas"):
+                    st.download_button("⬇  Quadro de Sapatas",
+                        data=st.session_state["img_sapatas"],
+                        file_name="quadro_sapatas.png", mime="image/png",
+                        use_container_width=True)
+            except Exception as _e:
+                st.error(f"Erro ao gerar desenhos: {_e}")
     else:
         gen_docx = False
 
@@ -653,6 +696,7 @@ with tab_vigas:
             "MRd (kNm)": round(getattr(r, "mrd_knm", 0.0), 2),
             "Vsd (kN)": round(r.vsd_kn, 2),
             "VRd,c (kN)": round(getattr(r, "vrd_c_kn", 0.0), 2),
+            "VRd (kN)": round(getattr(r, "vrd_kn", 0.0), 2),
             "As req (cm²)": round(r.required_as_cm2, 2),
             "Armadura": rr.get("bottom_text", "-"),
             "Estribos": rr.get("stirrups_text", "-"),
