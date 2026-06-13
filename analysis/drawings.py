@@ -15,15 +15,21 @@ import matplotlib.patches as patches
 from matplotlib.gridspec import GridSpec
 from core.model import Project, SlabType
 
-# Guard for older model versions that may not have CANTILEVER
-_ST_RIBBED     = SlabType.RIBBED
-_ST_ONE_WAY    = SlabType.ONE_WAY
-_ST_TWO_WAY    = SlabType.TWO_WAY
-_ST_CANTILEVER = getattr(SlabType, 'CANTILEVER', None)
+# Use string values for comparison — SlabType is a str-Enum so these always
+# match regardless of which enum members exist in the deployed model version.
+_ST_RIBBED     = "ribbed"
+_ST_ONE_WAY    = "one_way"
+_ST_TWO_WAY    = "two_way"
+_ST_CANTILEVER = "cantilever"
+
+
+def _slab_val(slab_type) -> str:
+    """Return the string value of a SlabType (or the value itself if already str)."""
+    return slab_type.value if hasattr(slab_type, 'value') else str(slab_type)
 
 
 def _is_cantilever(slab_type) -> bool:
-    return _ST_CANTILEVER is not None and slab_type == _ST_CANTILEVER
+    return _slab_val(slab_type) == _ST_CANTILEVER
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -107,16 +113,15 @@ def _draw_slab_bay(ax, x1, y1, x2, y2, slab):
     short_is_x = w <= h
     span_dir = 'x' if short_is_x else 'y'
 
-    slab_type = slab.slab_type if slab else _ST_ONE_WAY
+    sv = _slab_val(slab.slab_type) if slab else _ST_ONE_WAY
 
     color_map = {
-        _ST_ONE_WAY:  '#ddeeff',
-        _ST_TWO_WAY:  '#eeddff',
-        _ST_RIBBED:   '#fff8e8',
+        _ST_ONE_WAY:    '#ddeeff',
+        _ST_TWO_WAY:    '#eeddff',
+        _ST_RIBBED:     '#fff8e8',
+        _ST_CANTILEVER: '#ffeedd',
     }
-    if _ST_CANTILEVER:
-        color_map[_ST_CANTILEVER] = '#ffeedd'
-    bg_color = color_map.get(slab_type, '#f0f0f0')
+    bg_color = color_map.get(sv, '#f0f0f0')
 
     # Background rectangle
     ax.add_patch(patches.Rectangle(
@@ -124,16 +129,16 @@ def _draw_slab_bay(ax, x1, y1, x2, y2, slab):
         fill=True, facecolor=bg_color, edgecolor='#555555',
         linewidth=0.9, zorder=1))
 
-    if slab_type == _ST_RIBBED:
+    if sv == _ST_RIBBED:
         _draw_vigota_lines(ax, x1, y1, x2, y2, span_dir)
         _draw_span_arrow(ax, x1, y1, x2, y2, span_dir)
 
-    elif slab_type == _ST_TWO_WAY:
+    elif sv == _ST_TWO_WAY:
         ax.add_patch(patches.Rectangle(
             (x1, y1), w, h, fill=False,
             hatch='xxx', edgecolor='#aaaaaa', linewidth=0, zorder=2, alpha=0.7))
 
-    elif slab_type == _ST_ONE_WAY:
+    elif sv == _ST_ONE_WAY:
         ax.add_patch(patches.Rectangle(
             (x1, y1), w, h, fill=False,
             hatch='///', edgecolor='#aaaaaa', linewidth=0, zorder=2, alpha=0.7))
@@ -143,13 +148,12 @@ def _draw_slab_bay(ax, x1, y1, x2, y2, slab):
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
     if slab:
         stype_label = {
-            _ST_ONE_WAY: '1D',
-            _ST_TWO_WAY: '2D',
-            _ST_RIBBED:  'Alig.',
+            _ST_ONE_WAY:    '1D',
+            _ST_TWO_WAY:    '2D',
+            _ST_RIBBED:     'Alig.',
+            _ST_CANTILEVER: 'Cons.',
         }
-        if _ST_CANTILEVER:
-            stype_label[_ST_CANTILEVER] = 'Cons.'
-        stype_label = stype_label.get(slab_type, '')
+        stype_label = stype_label.get(sv, '')
         ax.text(cx, cy + 0.12, slab.id,
                 ha='center', va='center', fontsize=7, fontweight='bold', zorder=6)
         cat = f' [{slab.catalog_id}]' if getattr(slab, 'catalog_id', None) else ''
@@ -284,17 +288,16 @@ def draw_slab_plan(project: Project, title: str = "PLANTA DA LAJE DE PISO") -> b
 
     # --- Draw slabs with polygon_points (if available) ---
     hatch_map = {
-        _ST_ONE_WAY:  ('///', '#ddeeff'),
-        _ST_TWO_WAY:  ('xxx', '#eeddff'),
-        _ST_RIBBED:   ('',    '#fff8e8'),
+        _ST_ONE_WAY:    ('///', '#ddeeff'),
+        _ST_TWO_WAY:    ('xxx', '#eeddff'),
+        _ST_RIBBED:     ('',    '#fff8e8'),
+        _ST_CANTILEVER: ('---', '#ffeedd'),
     }
-    if _ST_CANTILEVER:
-        hatch_map[_ST_CANTILEVER] = ('---', '#ffeedd')
     drawn_slab_ids = set()
     for slab in project.slabs:
         pts = slab.polygon_points
         if pts and len(pts) >= 3:
-            hatch, fc = hatch_map.get(slab.slab_type, ('', '#eeeeee'))
+            hatch, fc = hatch_map.get(_slab_val(slab.slab_type), ('', '#eeeeee'))
             ax.add_patch(patches.Polygon(pts, closed=True,
                                          fill=True, facecolor=fc, edgecolor='#888888',
                                          linewidth=0.6, hatch=hatch, zorder=1, alpha=0.7))
