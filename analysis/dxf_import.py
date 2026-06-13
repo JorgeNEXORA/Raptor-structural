@@ -142,8 +142,13 @@ class SimpleDXFImporter:
         return col_id, width, depth, diam, shape
 
     def _unit_factor(self, val: float) -> float:
-        """Heuristic: if coords look like mm (>1000 for a typical building), divide by 10."""
-        return 0.1 if abs(val) > 1000 else 1.0
+        """Heuristic unit factor: mm→m if >5000, cm→m if >500, else 1."""
+        v = abs(val)
+        if v > 5000:
+            return 0.001   # mm → m
+        if v > 500:
+            return 0.01    # cm → m
+        return 1.0
 
     # ── Strategy 1: TEXT / MTEXT labels ──────────────────────────────────────
     def _cols_from_text(self, entities, height_m):
@@ -388,24 +393,52 @@ class SimpleDXFImporter:
         texts    = self._slab_texts(entities)
         slabs    = []
         counter  = 1
+
+        # Detect unit factor from all slab coordinates
+        all_xs = []
+        for ent in entities:
+            if ent.get("type") == "LWPOLYLINE" and self._is_layer(ent, _SLAB_LAYERS):
+                all_xs += [abs(float(str(v).replace(",", ".")))
+                           for v in self._as_list(ent.get("10")) if v]
+        raw_max = max(all_xs) if all_xs else 0
+        # If coordinates look like mm (>5000 for a building up to 50m), divide by 1000
+        # If looks like cm (>500), divide by 100; else assume metres
+        if raw_max > 5000:
+            uf = 0.001   # mm → m
+        elif raw_max > 500:
+            uf = 0.01    # cm → m
+        else:
+            uf = 1.0     # already m
+
+        # Minimum slab area in m² to filter out hatch fragments and details
+        MIN_AREA_M2 = 1.5
+        # Maximum area — ignore whole-building outlines (> 500 m²)
+        MAX_AREA_M2 = 500.0
+
         for ent in entities:
             if ent.get("type") != "LWPOLYLINE":
                 continue
             if not self._is_layer(ent, _SLAB_LAYERS):
                 continue
-            xs = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("10"))]
-            ys = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("20"))]
-            if len(xs) < 3 or len(xs) != len(ys):
+            xs_raw = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("10"))]
+            ys_raw = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("20"))]
+            if len(xs_raw) < 3 or len(xs_raw) != len(ys_raw):
                 continue
+            xs = [v * uf for v in xs_raw]
+            ys = [v * uf for v in ys_raw]
             pts   = list(zip(xs, ys))
+            area  = self._polygon_area(pts)
+            if area < MIN_AREA_M2 or area > MAX_AREA_M2:
+                continue   # skip tiny hatch fragments and whole-building outlines
             min_x, max_x = min(xs), max(xs)
             min_y, max_y = min(ys), max(ys)
             span  = min(max_x - min_x, max_y - min_y)
-            if span <= 0:
+            if span <= 0.1:
                 continue
             slab_id = f"SLAB{counter}"
             for tx, ty, label in texts:
-                if min_x <= tx <= max_x and min_y <= ty <= max_y and label:
+                tx_m, ty_m = tx * uf, ty * uf
+                if min_x <= tx_m <= max_x and min_y <= ty_m <= max_y and label:
                     slab_id = label
                     break
             slabs.append(SlabPanel(
