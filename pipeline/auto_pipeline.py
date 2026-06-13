@@ -72,26 +72,51 @@ class AutoPipeline:
         distributor  = SlabToBeamDistributor()
         beam_lookup  = {b.id: b for b in project.beams}
 
+        _col_map = {c.id: c for c in project.columns}
+
+        def _beam_orientation(b):
+            """Return 'H' (horizontal/X) or 'V' (vertical/Y)."""
+            try:
+                c1 = _col_map[b.start_node]
+                c2 = _col_map[b.end_node]
+                return 'H' if abs(c2.x - c1.x) >= abs(c2.y - c1.y) else 'V'
+            except KeyError:
+                return 'H'
+
+        # Pre-group beams by orientation for fallback
+        _h_beams = sorted(
+            [b for b in project.beams if _beam_orientation(b) == 'H'],
+            key=lambda b: b.id)
+        _v_beams = sorted(
+            [b for b in project.beams if _beam_orientation(b) == 'V'],
+            key=lambda b: b.id)
+        _rr = [0]   # round-robin counter across slabs
+
         for s in project.slabs:
             contribs = distributor.support_beams_for_slab(s, project.beams, project.columns)
             if not contribs and project.beams:
-                # Fallback for CSV slabs without polygon_points:
-                # find up to 2 beams whose span is closest to slab span_m.
-                # If slab.support_beam_ids was pre-filled (e.g. by DXF), use those.
+                # 1. Use explicitly declared support beams if available
                 if s.support_beam_ids:
                     valid = [bid for bid in s.support_beam_ids if bid in beam_lookup]
                     if valid:
                         contribs = {bid: 1.0 / len(valid) for bid in valid}
+
                 if not contribs:
-                    sorted_beams = sorted(
-                        project.beams,
-                        key=lambda b: abs(b.span_m - s.span_m))
-                    chosen = sorted_beams[:2]
+                    # 2. Round-robin: assign each slab to 1 H-beam + 1 V-beam
+                    #    cycling through both groups so all beams get loaded.
+                    chosen = []
+                    if _h_beams:
+                        chosen.append(_h_beams[_rr[0] % len(_h_beams)])
+                    if _v_beams:
+                        chosen.append(_v_beams[_rr[0] % len(_v_beams)])
+                    if not chosen:
+                        chosen = [project.beams[_rr[0] % len(project.beams)]]
+                    _rr[0] += 1
                     contribs = {b.id: 1.0 / len(chosen) for b in chosen}
                     project.add_alert(
                         "warning",
-                        f"Laje {s.id}: sem polígono — carga distribuída por vão próximo "
-                        f"({', '.join(b.id for b in chosen)}) [aprox.].")
+                        f"Laje {s.id}: sem polígono — carga atribuída a "
+                        f"{', '.join(b.id for b in chosen)} [aprox. round-robin].")
             if not contribs:
                 project.add_alert("warning", f"Laje {s.id}: não foi possível identificar vigas de apoio.")
                 continue
