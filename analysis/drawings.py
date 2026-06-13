@@ -1359,6 +1359,6 @@ def draw_beam_schedule_dxf(project: 'Project') -> bytes:
         _dxf_frame_elevation(msp, direction, bms, col_map, idx + 1, y_cursor)
         y_cursor -= (frame_h + 2.0)   # 2m spacing between frames
 
-    out = io.BytesIO()
+    out = io.StringIO()
     doc.write(out)
-    return out.getvalue()
+    return out.getvalue().encode('utf-8')
