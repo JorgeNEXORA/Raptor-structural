@@ -267,6 +267,30 @@ class SimpleDXFImporter:
         return columns
 
     # ── Public: import_columns ────────────────────────────────────────────────
+    def _dedup_columns(self, cols: list, tol_m: float = 0.30) -> list:
+        """Remove duplicate columns at (nearly) the same position.
+        Keeps the one with largest section or first encountered.
+        tol_m: distance threshold in metres — columns closer than this are merged.
+        """
+        kept = []
+        for c in cols:
+            duplicate = False
+            for k in kept:
+                if math.hypot(c.x - k.x, c.y - k.y) < tol_m:
+                    # Keep the one with larger section
+                    if c.width_cm * c.depth_cm > k.width_cm * k.depth_cm:
+                        k.width_cm = c.width_cm
+                        k.depth_cm = c.depth_cm
+                    duplicate = True
+                    break
+            if not duplicate:
+                kept.append(c)
+        # Re-number to keep IDs sequential
+        for i, k in enumerate(kept, 1):
+            if re.match(r'^P\d+$', k.id):
+                k.id = f"P{i}"
+        return kept
+
     def import_columns(self, dxf_path: str,
                        width_cm: float = 25.0, depth_cm: float = 25.0,
                        height_m: float = 3.0):
@@ -275,15 +299,15 @@ class SimpleDXFImporter:
         # Try strategies in priority order
         cols = self._cols_from_text(entities, height_m)
         if cols:
-            return cols
+            return self._dedup_columns(cols)
 
         cols = self._cols_from_polyline(entities, height_m)
         if cols:
-            return cols
+            return self._dedup_columns(cols)
 
         cols = self._cols_from_circle(entities, height_m)
         if cols:
-            return cols
+            return self._dedup_columns(cols)
 
         return []
 
