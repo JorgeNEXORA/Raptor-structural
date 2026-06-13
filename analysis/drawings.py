@@ -885,14 +885,14 @@ def _draw_frame_elevation(ax, direction, beams, col_map, frame_num):
         # ── Stirrup labels (below beam) ─────────────────────────────
         y_sl = beam_bot - 0.06
         ax.text(x_l + zone * 0.5, y_sl,
-                f'{n_el}ØØ{phi_e} a/{s_e}',
+                f'{n_el}xØ{phi_e} a/{s_e}',
                 ha='center', va='top', fontsize=4.8)
         if n_mi > 0:
             ax.text(mid, y_sl,
-                    f'{n_mi}ØØ{phi_m} a/{s_m}',
+                    f'{n_mi}xØ{phi_m} a/{s_m}',
                     ha='center', va='top', fontsize=4.8)
         ax.text(x_r - zone * 0.5, y_sl,
-                f'{n_er}ØØ{phi_e} a/{s_e}',
+                f'{n_er}xØ{phi_e} a/{s_e}',
                 ha='center', va='top', fontsize=4.8)
 
         # ── Msd/Vsd label inside beam ───────────────────────────────

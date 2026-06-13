@@ -74,6 +74,24 @@ class AutoPipeline:
 
         for s in project.slabs:
             contribs = distributor.support_beams_for_slab(s, project.beams, project.columns)
+            if not contribs and project.beams:
+                # Fallback for CSV slabs without polygon_points:
+                # find up to 2 beams whose span is closest to slab span_m.
+                # If slab.support_beam_ids was pre-filled (e.g. by DXF), use those.
+                if s.support_beam_ids:
+                    valid = [bid for bid in s.support_beam_ids if bid in beam_lookup]
+                    if valid:
+                        contribs = {bid: 1.0 / len(valid) for bid in valid}
+                if not contribs:
+                    sorted_beams = sorted(
+                        project.beams,
+                        key=lambda b: abs(b.span_m - s.span_m))
+                    chosen = sorted_beams[:2]
+                    contribs = {b.id: 1.0 / len(chosen) for b in chosen}
+                    project.add_alert(
+                        "warning",
+                        f"Laje {s.id}: sem polígono — carga distribuída por vão próximo "
+                        f"({', '.join(b.id for b in chosen)}) [aprox.].")
             if not contribs:
                 project.add_alert("warning", f"Laje {s.id}: não foi possível identificar vigas de apoio.")
                 continue
