@@ -6,7 +6,10 @@ footing schedule.
 import io
 import math
 import matplotlib
-matplotlib.use('Agg')
+try:
+    matplotlib.use('Agg')
+except Exception:
+    pass
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.gridspec import GridSpec
