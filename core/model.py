@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
+_MODEL_VERSION = "2026.06.13"  # forces pycache invalidation on cloud
+
 class BeamType(str, Enum):
     FRAME = "frame"
 
