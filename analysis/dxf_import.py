@@ -1,6 +1,35 @@
 import math
 import re
+import unicodedata
 from core.model import Column, Beam, BeamType, SlabPanel, SlabType
+
+
+def _norm_layer(name: str) -> str:
+    """Normalise layer name: strip accents, lowercase, remove spaces."""
+    nfkd = unicodedata.normalize('NFKD', name)
+    return ''.join(c for c in nfkd if not unicodedata.combining(c)).lower().replace(' ', '_')
+
+
+# Recognised layer names (normalised) for each element type
+_PILAR_LAYERS = {
+    'pilares', 'pilar', 'columns', 'column',
+    'es_pilar', 'es_pilares', 'estrutura_pilar',
+    'pilares_rc', 'pilar_rc',
+}
+_BEAM_LAYERS = {
+    'vigas', 'viga', 'beams', 'beam',
+    'es_portico_l_piso', 'es_portticos_cobertura', 'es_porticos_cobertura',
+    'es_viga_fundacao', 'es_vigas', 'es_viga',
+    'es_portico', 'es_porticos',
+}
+_SLAB_LAYERS = {
+    'lajes', 'laje', 'slabs', 'slab',
+    'es_laje_macica', 'es_laje_vigota', 'es_lajes', 'es_laje',
+    'es_vigotas_l_piso', 'es_vigotas',
+}
+_SLAB_TXT_LAYERS = {
+    'laje_textos', 'laje_txt', 'es_laje_txt', 'es_laje_macica_txt',
+}
 
 
 class SimpleDXFImporter:
@@ -9,15 +38,21 @@ class SimpleDXFImporter:
 
     Pilares detectados por (ordem de prioridade):
       1. TEXT/MTEXT com padrão  "P1 (25x25)"  ou  "P1 (Ø30)"  em qualquer layer
-      2. LWPOLYLINE/SOLID na layer PILARES → dimensões a partir do bounding box
-      3. CIRCLE na layer PILARES → pilar circular (raio → diâmetro)
+      2. LWPOLYLINE/SOLID nas layers PILARES / es_pilar → dims do bounding box
+      3. CIRCLE nas layers PILARES / es_pilar → pilar circular
 
-    Layers esperadas (case-insensitive):
-      PILARES  — geometria do pilar
-      VIGAS    — LINE
-      LAJES    — LWPOLYLINE fechada
-      LAJE_TEXTOS — TEXT com ID da laje
+    Layers reconhecidas (case-insensitive, sem acentos):
+      PILARES / es_pilar           — geometria do pilar
+      VIGAS / es_portico_l_piso /
+        es_portticos_cobertura /
+        es_viga_fundacao           — vigas (LINE ou LWPOLYLINE)
+      LAJES / es_laje_macica /
+        es_vigotas_l_piso          — LWPOLYLINE fechada de laje
+      LAJE_TEXTOS / es_laje_txt   — TEXT com ID da laje
     """
+
+    def _is_layer(self, ent, layer_set: set) -> bool:
+        return _norm_layer(str(ent.get("8", ""))) in layer_set
 
     # ── DXF raw read ──────────────────────────────────────────────────────────
     def read_pairs(self, dxf_path: str):
@@ -183,13 +218,13 @@ class SimpleDXFImporter:
 
     # ── Strategy 2: LWPOLYLINE on PILARES layer ───────────────────────────────
     def _cols_from_polyline(self, entities, height_m):
-        """Detect columns from small closed polylines on the PILARES layer."""
+        """Detect columns from small closed polylines on recognised column layers."""
         columns = []
         counter = 1
         for ent in entities:
             if ent.get("type") != "LWPOLYLINE":
                 continue
-            if ent.get("8", "").upper() not in ("PILARES", "PILAR", "COLUMNS", "COLUMN"):
+            if not self._is_layer(ent, _PILAR_LAYERS):
                 continue
             xs = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("10"))]
             ys = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("20"))]
@@ -213,7 +248,7 @@ class SimpleDXFImporter:
         for ent in entities:
             if ent.get("type") != "CIRCLE":
                 continue
-            if ent.get("8", "").upper() not in ("PILARES", "PILAR", "COLUMNS", "COLUMN"):
+            if not self._is_layer(ent, _PILAR_LAYERS):
                 continue
             x = float(str(ent.get("10", "0")).replace(",", "."))
             y = float(str(ent.get("20", "0")).replace(",", "."))
@@ -273,42 +308,62 @@ class SimpleDXFImporter:
         if columns:
             uf = self._unit_factor(columns[0].x * 10) if columns[0].x < 10 else 1.0
 
-        for ent in entities:
-            if ent.get("type") != "LINE":
-                continue
-            if ent.get("8", "").upper() not in ("VIGAS", "VIGA", "BEAMS", "BEAM"):
-                continue
-            x1 = float(str(ent.get("10", "0")).replace(",", ".")) * uf
-            y1 = float(str(ent.get("20", "0")).replace(",", ".")) * uf
-            x2 = float(str(ent.get("11", "0")).replace(",", ".")) * uf
-            y2 = float(str(ent.get("21", "0")).replace(",", ".")) * uf
-
+        def _add_beam(x1, y1, x2, y2):
+            nonlocal counter
             n1 = self.find_nearest_column_id(x1, y1, columns)
             n2 = self.find_nearest_column_id(x2, y2, columns)
             if not n1 or not n2 or n1 == n2:
-                continue
+                return
             key = tuple(sorted((n1, n2)))
             if key in seen:
-                continue
+                return
             seen.add(key)
             span = math.hypot(x2 - x1, y2 - y1)
             beams.append(Beam(f"B{counter}", n1, n2, width_cm, height_cm,
                               effective_depth_cm, span, BeamType.FRAME))
             counter += 1
+
+        for ent in entities:
+            etype = ent.get("type")
+            if etype not in ("LINE", "LWPOLYLINE"):
+                continue
+            if not self._is_layer(ent, _BEAM_LAYERS):
+                continue
+
+            if etype == "LINE":
+                x1 = float(str(ent.get("10", "0")).replace(",", ".")) * uf
+                y1 = float(str(ent.get("20", "0")).replace(",", ".")) * uf
+                x2 = float(str(ent.get("11", "0")).replace(",", ".")) * uf
+                y2 = float(str(ent.get("21", "0")).replace(",", ".")) * uf
+                _add_beam(x1, y1, x2, y2)
+
+            else:  # LWPOLYLINE — iterate consecutive vertex pairs
+                xs = [float(str(v).replace(",", ".")) * uf
+                      for v in self._as_list(ent.get("10"))]
+                ys = [float(str(v).replace(",", ".")) * uf
+                      for v in self._as_list(ent.get("20"))]
+                pts = list(zip(xs, ys))
+                for k in range(len(pts) - 1):
+                    _add_beam(pts[k][0], pts[k][1], pts[k+1][0], pts[k+1][1])
+
         return beams
 
     # ── Slabs ─────────────────────────────────────────────────────────────────
     def _slab_texts(self, entities):
         texts = []
         for ent in entities:
-            if ent.get("type") == "TEXT" and ent.get("8", "").upper() == "LAJE_TEXTOS":
-                try:
-                    x   = float(str(ent.get("10", "0")).replace(",", "."))
-                    y   = float(str(ent.get("20", "0")).replace(",", "."))
-                    txt = str(ent.get("1", "")).strip()
-                    texts.append((x, y, txt))
-                except Exception:
-                    pass
+            if ent.get("type") not in ("TEXT", "MTEXT"):
+                continue
+            if not self._is_layer(ent, _SLAB_TXT_LAYERS):
+                continue
+            try:
+                x   = float(str(ent.get("10", "0")).replace(",", "."))
+                y   = float(str(ent.get("20", "0")).replace(",", "."))
+                txt = str(ent.get("1", "")).strip()
+                txt = re.sub(r'\\[A-Za-z][^;]*;|[{}]', '', txt)
+                texts.append((x, y, txt))
+            except Exception:
+                pass
         return texts
 
     def _polygon_area(self, pts):
@@ -336,7 +391,7 @@ class SimpleDXFImporter:
         for ent in entities:
             if ent.get("type") != "LWPOLYLINE":
                 continue
-            if ent.get("8", "").upper() not in ("LAJES", "LAJE", "SLABS", "SLAB"):
+            if not self._is_layer(ent, _SLAB_LAYERS):
                 continue
             xs = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("10"))]
             ys = [float(str(v).replace(",", ".")) for v in self._as_list(ent.get("20"))]
