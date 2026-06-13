@@ -636,3 +636,153 @@ def _draw_single_footing_cell(ax, footing, col):
     for k, txt in enumerate(lines):
         ax.text(fa / 2, y0 - k * 5.5, txt,
                 ha='center', va='top', fontsize=5.5)
+
+
+# ── 5. Quadro de Vigas ───────────────────────────────────────────────────────
+
+def _beam_bottom_bars(as_req_cm2: float):
+    """Return (n_bars, dia_mm, total_area_cm2) satisfying as_req_cm2."""
+    as_min = max(as_req_cm2, 1.0)
+    options = [
+        (2, 10, 1.571), (2, 12, 2.262), (2, 16, 4.021), (3, 12, 3.393),
+        (2, 20, 6.283), (3, 16, 6.032), (4, 12, 4.524), (3, 20, 9.425),
+        (4, 16, 8.042), (5, 16, 10.053), (4, 20, 12.566), (5, 20, 15.708),
+        (6, 20, 18.850),
+    ]
+    for n, phi, area in options:
+        if area >= as_min:
+            return n, phi, area
+    return 6, 20, 18.850
+
+
+def _beam_stirrup_design(vsd_kn: float, d_cm: float):
+    """Return (phi_mm, s_cm) satisfying EC2 shear Vrd,s >= vsd_kn."""
+    fyd_kn_cm2 = (500.0 / 1.15) * 0.1   # kN/cm²  (1 MPa = 0.1 kN/cm²)
+    z_cm = 0.9 * d_cm
+    options = [(6, 20), (6, 15), (6, 10), (8, 20), (8, 15), (8, 10),
+               (10, 20), (10, 15), (10, 10)]
+    for phi_mm, s_cm in options:
+        phi_cm = phi_mm / 10.0
+        asw_cm2 = 2 * math.pi * (phi_cm / 2) ** 2   # 2 legs
+        vrd_s = (asw_cm2 / s_cm) * z_cm * fyd_kn_cm2
+        if vrd_s >= vsd_kn:
+            return phi_mm, s_cm
+    return 10, 10
+
+
+def _draw_single_beam_cell(ax, beam):
+    ax.set_facecolor('white')
+    ax.axis('off')
+
+    bw = beam.width_cm
+    bh = beam.height_cm
+    cov = 2.5   # cm cover to stirrup centre
+    bar_r = 0.8  # drawn circle radius
+
+    # ── cross-section (drawn left-aligned) ──────────────────────────
+    cs_w = bw          # cm
+    cs_h = bh          # cm
+
+    # Outer outline
+    ax.add_patch(patches.Rectangle((0, 0), cs_w, cs_h,
+                                   fill=True, facecolor='#f5f5f5',
+                                   edgecolor='black', linewidth=1.2))
+    # Stirrup outline
+    ax.add_patch(patches.Rectangle(
+        (cov, cov), cs_w - 2 * cov, cs_h - 2 * cov,
+        fill=False, edgecolor='black', linewidth=0.6, linestyle='--'))
+
+    # ── bottom reinforcement bars ──────────────────────────────────
+    as_req = beam.result.required_as_cm2 if beam.result else 2.0
+    # Use reinforcement_result text if available, else compute
+    rr = beam.reinforcement_result or {}
+    bottom_text = rr.get("bottom_text", "")
+
+    n_bot, dia_bot, _ = _beam_bottom_bars(as_req)
+
+    x_step = (cs_w - 2 * cov) / max(n_bot - 1, 1)
+    for k in range(n_bot):
+        bx = cov + k * x_step if n_bot > 1 else cs_w / 2
+        by = cov + bar_r
+        ax.add_patch(patches.Circle((bx, by), bar_r,
+                                    fill=True, facecolor='black', zorder=3))
+
+    # ── top hanger bars (2Ø12 minimum) ───────────────────────────
+    for bx in [cov, cs_w - cov]:
+        by = cs_h - cov - bar_r
+        ax.add_patch(patches.Circle((bx, by), bar_r * 0.8,
+                                    fill=True, facecolor='black', zorder=3))
+
+    # ── axis limits ──────────────────────────────────────────────
+    text_h = cs_h * 0.70    # space below for annotations
+    pad_x = cs_w * 0.12
+    ax.set_xlim(-pad_x, cs_w + pad_x)
+    ax.set_ylim(-text_h, cs_h + cs_w * 0.35)
+    ax.set_aspect('equal')
+
+    # ── header (beam ID) ─────────────────────────────────────────
+    ax.text(cs_w / 2, cs_h + cs_w * 0.25, beam.id,
+            ha='center', va='center', fontsize=7, fontweight='bold')
+
+    # ── dimension label on right ──────────────────────────────────
+    ax.text(cs_w + pad_x * 0.4, cs_h / 2,
+            f'{int(bw)}×{int(bh)}',
+            ha='left', va='center', fontsize=5.5, rotation=90)
+
+    # ── text annotations below section ──────────────────────────
+    vsd = beam.result.vsd_kn if beam.result else 0.0
+    msd = beam.result.msd_knm if beam.result else 0.0
+    phi_s, s_s = _beam_stirrup_design(vsd, beam.effective_depth_cm)
+
+    stirrups_text = rr.get("stirrups_text", f"Ø{phi_s}///{s_s}")
+    if not bottom_text:
+        bottom_text = f"{n_bot}Ø{dia_bot}"
+
+    lines = [
+        f'L = {beam.span_m:.2f} m',
+        f'As inf: {bottom_text}',
+        f'As sup: 2Ø12',
+        f'Estribos: {stirrups_text}',
+        f'Msd={msd:.1f}kNm  Vsd={vsd:.1f}kN',
+    ]
+    y0 = -2.5
+    dh = text_h / (len(lines) + 0.5)
+    for k, txt in enumerate(lines):
+        ax.text(cs_w / 2, y0 - k * dh, txt,
+                ha='center', va='top', fontsize=5.2)
+
+
+def draw_beam_schedule(project: Project) -> bytes:
+    beams = [b for b in project.beams if b.result]
+    if not beams:
+        return b""
+
+    n = len(beams)
+    cell_w = 2.2    # inches per beam
+    cell_h = 3.8    # inches
+    label_w = 0.6
+    fig_w = label_w + n * cell_w + 0.3
+    fig_h = cell_h + 0.9
+
+    fig = plt.figure(figsize=(fig_w, fig_h), facecolor='white')
+    fig.text(0.5, 0.99, f'QUADRO DE VIGAS — {project.name}',
+             ha='center', va='top', fontsize=10, fontweight='bold')
+
+    gs = GridSpec(1, n, figure=fig,
+                  left=label_w / fig_w + 0.01, right=0.99,
+                  top=0.91, bottom=0.01,
+                  hspace=0.0, wspace=0.10)
+
+    for i, beam in enumerate(beams):
+        ax = fig.add_subplot(gs[0, i])
+        _draw_single_beam_cell(ax, beam)
+
+    # Outer border lines
+    fig.add_artist(plt.Line2D(
+        [label_w / fig_w, 0.99], [0.91, 0.91],
+        transform=fig.transFigure, color='black', linewidth=1.0))
+    fig.add_artist(plt.Line2D(
+        [label_w / fig_w, 0.99], [0.01, 0.01],
+        transform=fig.transFigure, color='black', linewidth=1.0))
+
+    return _fig_to_bytes(fig, dpi=150)
