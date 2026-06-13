@@ -8,8 +8,9 @@ from typing import Any
 
 from core.model import (
     Alert, Beam, BeamResult, BeamType, Column, ColumnLoad, ColumnResult,
+    ContinuousFooting, ContinuousFootingResult,
     Footing, FootingResult, FootingType, FoundationTieBeam, LineLoad,
-    Project, SlabPanel, SlabResult, SlabType,
+    Project, RetainingWall, RetainingWallResult, SlabPanel, SlabResult, SlabType,
     ShearWall, ShearWallResult, FlatSlab, StairSlab,
 )
 
@@ -149,6 +150,45 @@ def _tie_beam_from_dict(d: dict) -> FoundationTieBeam:
     )
 
 
+def _rw_from_dict(d: dict) -> RetainingWall:
+    rw = RetainingWall(
+        id=d["id"], height_m=d["height_m"],
+        stem_thickness_cm=d["stem_thickness_cm"],
+        base_width_m=d["base_width_m"],
+        base_thickness_cm=d["base_thickness_cm"],
+        heel_m=d["heel_m"], toe_m=d["toe_m"],
+        gamma_soil_kn_m3=d.get("gamma_soil_kn_m3", 18.0),
+        phi_deg=d.get("phi_deg", 30.0),
+        surcharge_kn_m2=d.get("surcharge_kn_m2", 5.0),
+        x=d.get("x", 0.0), y=d.get("y", 0.0),
+    )
+    if d.get("result"):
+        try:
+            rw.result = RetainingWallResult(**{k: v for k, v in d["result"].items()
+                                               if k in {f.name for f in dataclasses.fields(RetainingWallResult)}})
+        except Exception:
+            pass
+    return rw
+
+
+def _cf_from_dict(d: dict) -> ContinuousFooting:
+    cf = ContinuousFooting(
+        id=d["id"], related_wall_id=d["related_wall_id"],
+        width_cm=d["width_cm"], height_cm=d["height_cm"],
+        length_m=d["length_m"],
+        load_gk_kn_m=d.get("load_gk_kn_m", 0.0),
+        load_qk_kn_m=d.get("load_qk_kn_m", 0.0),
+        effective_depth_cm=d.get("effective_depth_cm", 0.0),
+    )
+    if d.get("result"):
+        try:
+            cf.result = ContinuousFootingResult(**{k: v for k, v in d["result"].items()
+                                                   if k in {f.name for f in dataclasses.fields(ContinuousFootingResult)}})
+        except Exception:
+            pass
+    return cf
+
+
 def load_project(data: bytes) -> Project:
     """Deserialise .raptor bytes back to a Project object."""
     raw = json.loads(data.decode("utf-8"))
@@ -167,6 +207,8 @@ def load_project(data: bytes) -> Project:
         owner=pd.get("owner", ""),
         building_type=pd.get("building_type", ""),
         designer=pd.get("designer", ""),
+        retaining_walls=[],
+        continuous_footings=[],
     )
 
     p.columns   = [_col_from_dict(d)      for d in pd.get("columns",   [])]
@@ -174,6 +216,8 @@ def load_project(data: bytes) -> Project:
     p.slabs     = [_slab_from_dict(d)     for d in pd.get("slabs",     [])]
     p.footings  = [_footing_from_dict(d)  for d in pd.get("footings",  [])]
     p.tie_beams = [_tie_beam_from_dict(d) for d in pd.get("tie_beams", [])]
+    p.retaining_walls     = [_rw_from_dict(d)  for d in pd.get("retaining_walls", [])]
+    p.continuous_footings = [_cf_from_dict(d)  for d in pd.get("continuous_footings", [])]
     p.alerts    = [Alert(**a)             for a in pd.get("alerts",     [])]
     p.advice_messages   = pd.get("advice_messages", [])
     p.project_scores    = pd.get("project_scores", {})

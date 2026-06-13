@@ -1731,3 +1731,230 @@ def draw_footing_schedule_dxf(project: 'Project') -> bytes:
                      0, y_bot - 0.3)
     out = io.StringIO(); doc.write(out)
     return out.getvalue().encode('utf-8')
+
+
+# ── Quadro de Lajes ───────────────────────────────────────────────────────────
+
+def draw_slab_schedule(project: Project) -> bytes:
+    """PNG slab schedule — one row per slab with type, span, thickness, loads, As."""
+    slabs = project.slabs
+    if not slabs:
+        fig, ax = plt.subplots(figsize=(10, 2))
+        ax.text(0.5, 0.5, 'Sem lajes', ha='center', va='center', transform=ax.transAxes)
+        buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close(fig); return buf.getvalue()
+
+    _TYPE_PT = {
+        "one_way": "Vigotada 1 dir.", "ribbed": "Aligeirada",
+        "two_way": "Maciça 2 dir.", "cantilever": "Consola",
+    }
+
+    headers = ["ID", "Tipo", "Dir.", "Vão (m)", "h (cm)", "d (cm)",
+               "gk (kN/m²)", "qk (kN/m²)", "Msd (kNm/m)", "As req. (cm²/m)",
+               "Utiliz. Flexão", "Utiliz. Flecha"]
+    rows = []
+    for s in slabs:
+        tp = _TYPE_PT.get(_slab_val(s.slab_type), _slab_val(s.slab_type))
+        r = s.result
+        rows.append([
+            s.id, tp, (s.direction or "-").upper(),
+            f"{s.span_m:.2f}", f"{s.thickness_cm:.0f}", f"{s.effective_depth_cm:.0f}",
+            f"{s.gk_kn_m2:.2f}", f"{s.qk_kn_m2:.2f}",
+            f"{r.msd_knm_m:.2f}" if r else "-",
+            f"{r.reaction_uls_kn_m * s.span_m**2 / 8 / max(r.msd_knm_m,0.001) * (r.msd_knm_m / max(r.msd_knm_m,0.001)):.2f}" if r else "-",
+            f"{getattr(r,'deflection_utilization',0):.2f}" if r else "-",
+            f"{getattr(r,'crack_utilization',0):.2f}" if r else "-",
+        ])
+        # Fix As: use msd and back-calculate approximate As
+        if r:
+            fyk = getattr(project, 'fyk_mpa', 500.0)
+            fck = getattr(project, 'fck_mpa', 25.0)
+            fyd = min(fyk / 1.15, 435.0)
+            d_m = s.effective_depth_cm / 100
+            fcd = fck / 1.5
+            mu = r.msd_knm_m * 1000 / max(1.0 * d_m**2 * fcd * 1e6, 1e-6)
+            mu = min(mu, 0.295)
+            omega = 1.0 - math.sqrt(max(1 - 2*mu, 0.0))
+            As = omega * 1.0 * d_m * fcd * 1e6 / (fyd * 1e6) * 10000  # cm²/m
+            As = max(As, 0.0013 * 100 * s.effective_depth_cm)
+            rows[-1][9] = f"{As:.2f}"
+
+    n = len(rows)
+    fig_h = max(2.5, 0.45 * n + 1.5)
+    fig, ax = plt.subplots(figsize=(16, fig_h))
+    ax.axis('off')
+
+    col_widths = [0.06, 0.13, 0.05, 0.07, 0.06, 0.06, 0.08, 0.08, 0.09, 0.10, 0.10, 0.10]
+    tbl = ax.table(
+        cellText=rows, colLabels=headers,
+        cellLoc='center', loc='center',
+        colWidths=col_widths,
+    )
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(8.5)
+    tbl.scale(1, 1.5)
+
+    # Style header
+    for j in range(len(headers)):
+        tbl[0, j].set_facecolor('#2c3e50')
+        tbl[0, j].set_text_props(color='white', fontweight='bold')
+
+    # Style data rows with utilization colouring
+    for i, row in enumerate(rows):
+        for j in range(len(headers)):
+            tbl[i+1, j].set_facecolor('#f8f9fa' if i % 2 == 0 else 'white')
+        # Colour utilization columns
+        for jj in [10, 11]:
+            try:
+                v = float(row[jj])
+                color = '#c0392b' if v >= 1.0 else ('#e67e22' if v >= 0.80 else '#27ae60')
+                tbl[i+1, jj].set_facecolor(color)
+                tbl[i+1, jj].set_text_props(color='white', fontweight='bold')
+            except Exception:
+                pass
+
+    ax.set_title('QUADRO DE LAJES', fontsize=13, fontweight='bold', pad=12)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return buf.getvalue()
+
+
+def draw_slab_schedule_dxf(project: Project) -> bytes:
+    """DXF slab schedule table."""
+    import ezdxf
+    slabs = project.slabs
+    doc = _dxf_new_doc()
+    msp = doc.modelspace()
+
+    _TYPE_PT = {
+        "one_way": "Vigotada 1 dir.", "ribbed": "Aligeirada",
+        "two_way": "Maciça 2 dir.", "cantilever": "Consola",
+    }
+
+    COLS = ["ID", "Tipo", "Dir", "Vão(m)", "h(cm)", "gk", "qk", "Msd", "As(cm²/m)", "Util.Flex"]
+    WIDTHS = [1.2, 3.0, 0.8, 1.5, 1.2, 1.2, 1.2, 1.5, 2.0, 1.8]
+    ROW_H = 0.6
+    TH = TH_SM
+
+    # Header row
+    x0 = 0.0; y0 = 0.0
+    total_w = sum(WIDTHS)
+    _dxf_rect(msp, x0, y0 - ROW_H, total_w, ROW_H, 'GRELHA', lw=35)
+    xc = x0
+    for i, (hdr, w) in enumerate(zip(COLS, WIDTHS)):
+        _dxf_text(msp, hdr, xc + w/2, y0 - ROW_H/2, TH, 'TEXTO', 'CENTER', color=7)
+        xc += w
+
+    rows_y = y0 - ROW_H
+    for si, s in enumerate(slabs):
+        tp = _TYPE_PT.get(_slab_val(s.slab_type), _slab_val(s.slab_type))
+        r = s.result
+        fyd = min(getattr(project,'fyk_mpa',500)/1.15, 435.0)
+        fcd = getattr(project,'fck_mpa',25)/1.5
+        d_m = s.effective_depth_cm/100
+        As = 0.0
+        if r:
+            mu = r.msd_knm_m*1000/max(d_m**2*fcd*1e6,1e-6)
+            mu = min(mu,0.295)
+            omega = 1-math.sqrt(max(1-2*mu,0))
+            As = max(omega*d_m*fcd*1e6/(fyd*1e6)*10000, 0.0013*100*s.effective_depth_cm)
+        vals = [
+            s.id, tp[:18], (s.direction or "-").upper(),
+            f"{s.span_m:.2f}", f"{s.thickness_cm:.0f}",
+            f"{s.gk_kn_m2:.2f}", f"{s.qk_kn_m2:.2f}",
+            f"{r.msd_knm_m:.2f}" if r else "-",
+            f"{As:.2f}",
+            f"{getattr(r,'deflection_utilization',0):.2f}" if r else "-",
+        ]
+        ry = rows_y - ROW_H
+        _dxf_rect(msp, x0, ry, total_w, ROW_H, 'GRELHA', lw=13)
+        xc = x0
+        for val, w in zip(vals, WIDTHS):
+            _dxf_text(msp, str(val), xc + w/2, ry + ROW_H/2, TH, 'TEXTO', 'CENTER', color=8)
+            xc += w
+        rows_y = ry
+
+    y_bot = rows_y
+    _dxf_title_block(msp, project, 'QUADRO DE LAJES', 'S/Escala', 0, y_bot - 0.3)
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
+
+
+# ── Retaining Wall Schedule ───────────────────────────────────────────────────
+
+def draw_retaining_wall_schedule(project: Project) -> bytes:
+    """PNG schedule for retaining walls and their continuous footings."""
+    walls = getattr(project, 'retaining_walls', [])
+    cfs   = getattr(project, 'continuous_footings', [])
+
+    fig, axes = plt.subplots(2, 1, figsize=(14, max(4, len(walls)*1.2 + len(cfs)*1.2 + 2)))
+
+    # ── Muros de betão ────────────────────────────────────────────────────────
+    ax1 = axes[0]; ax1.axis('off')
+    if not walls:
+        ax1.text(0.5, 0.5, 'Sem muros de betão', ha='center', va='center', transform=ax1.transAxes)
+    else:
+        hdrs = ["ID", "H (m)", "e base (cm)", "Largura base (m)", "γ solo (kN/m³)",
+                "φ (°)", "q sob. (kN/m²)", "SF Desliز.", "SF Derrub.", "σ solo (MPa)", "OK"]
+        rows = []
+        for w in walls:
+            r = w.result
+            ok = "✓" if r and r.sliding_ok and r.overturning_ok and r.bearing_ok else "✗"
+            rows.append([
+                w.id, f"{w.height_m:.1f}", f"{w.stem_thickness_cm:.0f}",
+                f"{w.base_width_m:.2f}", f"{w.gamma_soil_kn_m3:.0f}", f"{w.phi_deg:.0f}",
+                f"{w.surcharge_kn_m2:.1f}",
+                f"{r.sliding_safety:.2f}" if r else "-",
+                f"{r.overturning_safety:.2f}" if r else "-",
+                f"{r.bearing_stress_mpa*1000:.0f}" if r else "-",
+                ok,
+            ])
+        tbl = ax1.table(cellText=rows, colLabels=hdrs, cellLoc='center', loc='center')
+        tbl.auto_set_font_size(False); tbl.set_fontsize(8.5); tbl.scale(1, 1.5)
+        for j in range(len(hdrs)):
+            tbl[0, j].set_facecolor('#2c3e50')
+            tbl[0, j].set_text_props(color='white', fontweight='bold')
+        for i, row in enumerate(rows):
+            for j in range(len(hdrs)):
+                tbl[i+1, j].set_facecolor('#f8f9fa' if i%2==0 else 'white')
+            ok_val = row[-1]
+            tbl[i+1, len(hdrs)-1].set_facecolor('#27ae60' if ok_val == "✓" else '#c0392b')
+            tbl[i+1, len(hdrs)-1].set_text_props(color='white', fontweight='bold')
+    ax1.set_title('MUROS DE BETÃO DE SUPORTE', fontsize=12, fontweight='bold', pad=8)
+
+    # ── Sapatas corridas ──────────────────────────────────────────────────────
+    ax2 = axes[1]; ax2.axis('off')
+    if not cfs:
+        ax2.text(0.5, 0.5, 'Sem sapatas corridas', ha='center', va='center', transform=ax2.transAxes)
+    else:
+        hdrs2 = ["ID", "Muro", "Largura (cm)", "Altura (cm)", "Comp. (m)",
+                 "σ solo (MPa)", "Util. Solo", "As req. (cm²/m)", "Util. Flex."]
+        rows2 = []
+        for cf in cfs:
+            r = cf.result
+            rows2.append([
+                cf.id, cf.related_wall_id,
+                f"{cf.width_cm:.0f}", f"{cf.height_cm:.0f}", f"{cf.length_m:.1f}",
+                f"{r.soil_stress_mpa*1000:.0f} kPa" if r else "-",
+                f"{r.soil_utilization:.2f}" if r else "-",
+                f"{r.required_as_cm2_m:.2f}" if r else "-",
+                f"{r.bending_utilization:.2f}" if r else "-",
+            ])
+        tbl2 = ax2.table(cellText=rows2, colLabels=hdrs2, cellLoc='center', loc='center')
+        tbl2.auto_set_font_size(False); tbl2.set_fontsize(8.5); tbl2.scale(1, 1.5)
+        for j in range(len(hdrs2)):
+            tbl2[0, j].set_facecolor('#16a085')
+            tbl2[0, j].set_text_props(color='white', fontweight='bold')
+        for i, row in enumerate(rows2):
+            for j in range(len(hdrs2)):
+                tbl2[i+1, j].set_facecolor('#f8f9fa' if i%2==0 else 'white')
+    ax2.set_title('SAPATAS CORRIDAS', fontsize=12, fontweight='bold', pad=8)
+
+    fig.suptitle(f'{project.name} — Muros e Sapatas Corridas', fontsize=13, fontweight='bold', y=1.01)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return buf.getvalue()

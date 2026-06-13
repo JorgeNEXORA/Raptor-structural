@@ -17,7 +17,17 @@
       "Bash(node -e ' *)",
       "Bash(node -e \"const fs=require\\('fs'\\); const b=fs.readFileSync\\('referencia_do_programa.pdf'\\); console.log\\('Size:',b.length,'bytes'\\); const s=b.toString\\('latin1'\\); const m=s.match\\(/\\\\/Count \\(\\\\d+\\)/\\); console.log\\('Pages approx:',m?m[1]:'?'\\);\")",
       "mcp__Claude_in_Chrome__tabs_context_mcp",
-      "PowerShell(\\(Get-Item \"C:\\\\Navier_structural\\\\Presdouro_Aligeiradas_2015\\\\Presdouro Aligeiradas 2015\\\\lajes_list_xml.xml\"\\).Length)"
+      "PowerShell(\\(Get-Item \"C:\\\\Navier_structural\\\\Presdouro_Aligeiradas_2015\\\\Presdouro Aligeiradas 2015\\\\lajes_list_xml.xml\"\\).Length)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Bash(pip install *)",
+      "Bash(python -m streamlit run app/streamlit_app.py --server.port 8501)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(python -c ' *)",
+      "Bash(.venv/Scripts/python.exe -c ' *)"
     ]
   }
 }

@@ -1,0 +1,6 @@
+id,vao_m,gk_kn_m2,qk_kn_m2,espessura_cm,altura_util_cm,tipo,catalogo
+LM1,4.5,5.5,2.0,20,17,aligeirada,P3-BL40x15-20
+LM2,5.0,5.5,2.0,20,17,aligeirada,P3-BL40x15-20
+LM3,4.0,5.5,2.0,20,17,aligeirada,P2-BL40x15-20
+C1,1.2,6.0,3.0,25,22,consola,
+SLAB1,4.5,6.15,2.0,27,24,simples,

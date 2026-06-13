@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
-_MODEL_VERSION = "2026.06.13"  # forces pycache invalidation on cloud
+_MODEL_VERSION = "2026.06.13b"  # forces pycache invalidation on cloud
 
 class BeamType(str, Enum):
     FRAME = "frame"
@@ -319,6 +319,74 @@ class StairSlab:
 
 
 @dataclass
+class RetainingWallResult:
+    """EC2 design result for a cantilever retaining wall."""
+    earth_pressure_kn_m: float      # total horizontal earth force per metre
+    moment_base_knm_m: float        # overturning moment at base
+    shear_base_kn_m: float          # horizontal shear at base
+    axial_base_kn_m: float          # vertical reaction at base
+    sliding_safety: float           # Fv·tan(δ) / Fh  (target ≥ 1.5)
+    overturning_safety: float       # stabilising / overturning moment (target ≥ 2.0)
+    bearing_stress_mpa: float       # max soil stress at base (kPa→MPa)
+    bearing_utilization: float      # bearing_stress / soil_allowable
+    required_as_stem_cm2_m: float   # stem vertical reinforcement
+    required_as_heel_cm2_m: float   # base slab heel reinforcement
+    sliding_ok: bool = True
+    overturning_ok: bool = True
+    bearing_ok: bool = True
+
+
+@dataclass
+class RetainingWall:
+    """Cantilever concrete retaining wall (muro de suporte em consola)."""
+    id: str
+    height_m: float          # retained height above footing top
+    stem_thickness_cm: float # stem thickness at base (top = 0.6× or fixed)
+    base_width_m: float      # total base width (≈ 0.5–0.7 × H)
+    base_thickness_cm: float # base slab thickness
+    heel_m: float            # heel length behind stem
+    toe_m: float             # toe length in front of stem
+    # Earth and surcharge
+    gamma_soil_kn_m3: float = 18.0  # soil unit weight
+    phi_deg: float = 30.0           # angle of internal friction
+    surcharge_kn_m2: float = 5.0    # surcharge on retained side
+    # Location (plan position of base corner)
+    x: float = 0.0
+    y: float = 0.0
+    result: "RetainingWallResult | None" = None
+
+
+@dataclass
+class ContinuousFootingResult:
+    soil_stress_mpa: float
+    soil_utilization: float
+    required_as_cm2_m: float    # per metre of footing length
+    med_knm_m: float
+    mrd_knm_m: float
+    bending_utilization: float
+    vsd_kn_m: float
+    vrd_c_kn_m: float
+    shear_utilization: float
+
+
+@dataclass
+class ContinuousFooting:
+    """Sapata corrida (strip footing) — for walls and retaining walls."""
+    id: str
+    related_wall_id: str        # RetainingWall or ShearWall id
+    width_cm: float             # footing width
+    height_cm: float            # footing height
+    length_m: float             # footing length
+    load_gk_kn_m: float = 0.0  # characteristic permanent load per metre
+    load_qk_kn_m: float = 0.0  # characteristic variable load per metre
+    effective_depth_cm: float = 0.0
+    result: "ContinuousFootingResult | None" = None
+
+    def area_m2(self) -> float:
+        return (self.width_cm / 100.0) * self.length_m
+
+
+@dataclass
 class Project:
     name: str
     location: str
@@ -334,6 +402,8 @@ class Project:
     alerts: List[Alert] = field(default_factory=list)
     advice_messages: List[str] = field(default_factory=list)
     project_scores: dict = field(default_factory=dict)
+    retaining_walls: List[RetainingWall] = field(default_factory=list)
+    continuous_footings: List[ContinuousFooting] = field(default_factory=list)
     history_snapshots: List[dict] = field(default_factory=list)
     # EC2 material properties
     fck_mpa: float = 25.0   # concrete characteristic compressive strength (C25/30)

@@ -1,5 +1,5 @@
 from core.generators import ModelGenerator
-from core.model import ColumnLoad, Footing, FootingType, LineLoad, Project
+from core.model import ColumnLoad, ContinuousFooting, Footing, FootingType, LineLoad, Project
 from analysis.slabs import SlabAnalyzer
 from analysis.beams import BeamAnalyzer
 from analysis.columns import ColumnAnalyzer
@@ -268,6 +268,53 @@ class AutoPipeline:
                     project.add_alert("warning",
                         f"Parede {w.id}: compressão vertical elevada ({r.axial_utilization:.2f}).")
             project.add_alert("info", f"Foram verificadas {len(project.walls)} paredes estruturais.")
+
+        # ── Retaining walls ──────────────────────────────────────────────────
+        if project.retaining_walls:
+            from analysis.retaining_walls import RetainingWallAnalyzer, ContinuousFootingAnalyzer
+            rw_analyzer = RetainingWallAnalyzer(fck_mpa=fck, fyk_mpa=fyk,
+                                                soil_allowable_mpa=project.soil_allowable_mpa)
+            cf_analyzer = ContinuousFootingAnalyzer(fck_mpa=fck, fyk_mpa=fyk,
+                                                    soil_allowable_mpa=project.soil_allowable_mpa)
+            for rw in project.retaining_walls:
+                rw_analyzer.analyze(rw)
+                r = rw.result
+                if not r.sliding_ok:
+                    project.add_alert("warning",
+                        f"Muro {rw.id}: deslizamento insuficiente (SF={r.sliding_safety:.2f} < 1.5).")
+                if not r.overturning_ok:
+                    project.add_alert("warning",
+                        f"Muro {rw.id}: derrubamento insuficiente (SF={r.overturning_safety:.2f} < 2.0).")
+                if not r.bearing_ok:
+                    project.add_alert("warning",
+                        f"Muro {rw.id}: tensão solo excede admissível ({r.bearing_utilization:.2f}).")
+            project.add_alert("info", f"Verificados {len(project.retaining_walls)} muros de suporte.")
+
+            # Auto-generate continuous footings for retaining walls if not present
+            existing_cf_ids = {cf.related_wall_id for cf in project.continuous_footings}
+            for rw in project.retaining_walls:
+                if rw.id not in existing_cf_ids:
+                    cf = ContinuousFooting(
+                        id=f"SC_{rw.id}",
+                        related_wall_id=rw.id,
+                        width_cm=rw.base_width_m * 100,
+                        height_cm=rw.base_thickness_cm,
+                        length_m=10.0,  # default — user should override
+                        load_gk_kn_m=rw.result.axial_base_kn_m if rw.result else 0,
+                        load_qk_kn_m=0.0,
+                        effective_depth_cm=rw.base_thickness_cm - 5.0,
+                    )
+                    project.continuous_footings.append(cf)
+
+            for cf in project.continuous_footings:
+                cf_analyzer.analyze(cf)
+                r = cf.result
+                if r.soil_utilization > 0.90:
+                    project.add_alert("warning",
+                        f"Sapata corrida {cf.id}: tensão solo elevada ({r.soil_utilization:.2f}).")
+                if r.bending_utilization > 1.0:
+                    project.add_alert("warning",
+                        f"Sapata corrida {cf.id}: flexão excede MRd ({r.bending_utilization:.2f}).")
 
         # ── Flat slabs ────────────────────────────────────────────────────────
         if project.flat_slabs:

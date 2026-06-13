@@ -10,7 +10,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from core.model import Column, FlatSlab, Project, ShearWall, StairSlab
+from core.model import Column, ContinuousFooting, FlatSlab, Project, RetainingWall, ShearWall, StairSlab
 from analysis.predim import ColumnPreDimensioner
 from config.loads import (
     LoadConfigurator, LAJE, ISOLAMENTO, ACABAMENTO_PISO, ACABAMENTO_COB,
@@ -56,6 +56,7 @@ for _key, _val in [
     ("manual_walls", []),
     ("manual_flat_slabs", []),
     ("manual_stairs", []),
+    ("manual_retaining_walls", []),
     ("load_cfg", None),
 ]:
     if _key not in st.session_state:
@@ -286,6 +287,33 @@ with st.sidebar:
                 st.session_state.manual_stairs = []
                 st.rerun()
 
+    # ── Muros de betão de suporte ────────────────────────────────────────────
+    with st.expander(f"🧱 Muros de betão ({len(st.session_state.manual_retaining_walls)})"):
+        with st.form("form_rw", clear_on_submit=True):
+            rw1, rw2 = st.columns(2)
+            rw_id   = rw1.text_input("ID", "M1")
+            rw_h    = rw1.number_input("Altura ret. (m)", value=2.5, min_value=0.5, step=0.25)
+            rw_st   = rw1.number_input("Espessura topo (cm)", value=25, min_value=15, step=5)
+            rw_bw   = rw1.number_input("Largura base (m)", value=1.5, min_value=0.5, step=0.1)
+            rw_ht   = rw1.number_input("Esp. base (cm)", value=30, min_value=20, step=5)
+            rw_heel = rw2.number_input("Calcanhar (m)", value=0.80, min_value=0.1, step=0.1)
+            rw_toe  = rw2.number_input("Ponta (m)", value=0.45, min_value=0.1, step=0.05)
+            rw_gam  = rw2.number_input("γ solo (kN/m³)", value=18.0, min_value=14.0, step=1.0)
+            rw_phi  = rw2.number_input("φ (°)", value=30, min_value=15, max_value=45, step=1)
+            rw_q    = rw2.number_input("Sobrecarga solo (kN/m²)", value=5.0, min_value=0.0, step=1.0)
+            if st.form_submit_button("➕ Adicionar muro"):
+                st.session_state.manual_retaining_walls.append(
+                    RetainingWall(rw_id, rw_h, rw_st, rw_bw, rw_ht, rw_heel, rw_toe,
+                                  rw_gam, float(rw_phi), rw_q))
+                st.rerun()
+        if st.session_state.manual_retaining_walls:
+            for rw in st.session_state.manual_retaining_walls:
+                st.caption(f"{rw.id}: H={rw.height_m}m  e={rw.stem_thickness_cm}cm  "
+                           f"B={rw.base_width_m}m  φ={rw.phi_deg}°")
+            if st.button("🗑 Limpar muros"):
+                st.session_state.manual_retaining_walls = []
+                st.rerun()
+
     # ── Configuração de Cargas ───────────────────────────────────────────────
     st.divider()
     st.markdown("**Configuração de cargas**")
@@ -418,11 +446,14 @@ with st.sidebar:
                                                draw_column_schedule,
                                                draw_footing_schedule,
                                                draw_beam_schedule,
+                                               draw_slab_schedule,
+                                               draw_retaining_wall_schedule,
                                                draw_beam_schedule_dxf,
                                                draw_foundation_plan_dxf,
                                                draw_slab_plan_dxf,
                                                draw_column_schedule_dxf,
-                                               draw_footing_schedule_dxf)
+                                               draw_footing_schedule_dxf,
+                                               draw_slab_schedule_dxf)
                 _p = st.session_state.project
                 if not st.session_state.get("drawings_ready"):
                     with st.spinner("A gerar desenhos…"):
@@ -432,12 +463,15 @@ with st.sidebar:
                         st.session_state["img_pilares"]    = draw_column_schedule(_p)
                         st.session_state["img_sapatas"]    = draw_footing_schedule(_p)
                         st.session_state["img_vigas"]      = draw_beam_schedule(_p)
+                        st.session_state["img_lajes"]      = draw_slab_schedule(_p)
+                        st.session_state["img_muros"]      = draw_retaining_wall_schedule(_p)
                         st.session_state["dxf_vigas"]      = draw_beam_schedule_dxf(_p)
                         st.session_state["dxf_fundacoes"]  = draw_foundation_plan_dxf(_p)
                         st.session_state["dxf_piso"]       = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE PISO")
                         st.session_state["dxf_cobertura"]  = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE COBERTURA")
                         st.session_state["dxf_pilares"]    = draw_column_schedule_dxf(_p)
                         st.session_state["dxf_sapatas"]    = draw_footing_schedule_dxf(_p)
+                        st.session_state["dxf_lajes"]      = draw_slab_schedule_dxf(_p)
                         st.session_state["drawings_ready"] = True
                 st.download_button("⬇  Planta Fundações",
                     data=st.session_state["img_fundacoes"],
@@ -501,6 +535,22 @@ with st.sidebar:
                         file_name="quadro_sapatas.dxf",
                         mime="application/octet-stream",
                         use_container_width=True)
+                if st.session_state.get("img_lajes"):
+                    st.download_button("⬇  Quadro de Lajes (PNG)",
+                        data=st.session_state["img_lajes"],
+                        file_name="quadro_lajes.png", mime="image/png",
+                        use_container_width=True)
+                if st.session_state.get("dxf_lajes"):
+                    st.download_button("⬇  Quadro de Lajes (DXF)",
+                        data=st.session_state["dxf_lajes"],
+                        file_name="quadro_lajes.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("img_muros"):
+                    st.download_button("⬇  Muros e Sapatas Corridas",
+                        data=st.session_state["img_muros"],
+                        file_name="muros_sapatas_corridas.png", mime="image/png",
+                        use_container_width=True)
             except Exception as _e:
                 st.error(f"Erro ao gerar desenhos: {_e}")
     else:
@@ -554,6 +604,7 @@ if run_btn:
                 walls=list(st.session_state.manual_walls),
                 flat_slabs=list(st.session_state.manual_flat_slabs),
                 stairs=list(st.session_state.manual_stairs),
+                retaining_walls=list(st.session_state.manual_retaining_walls),
                 fck_mpa=fck_mpa,
                 fyk_mpa=fyk_mpa,
             )
@@ -720,13 +771,14 @@ if scores:
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_res, tab_vigas, tab_pilares, tab_lajes, tab_sapatas, tab_paredes, tab_fungi, tab_esc, tab_alertas, tab_planta = st.tabs([
+tab_res, tab_vigas, tab_pilares, tab_lajes, tab_sapatas, tab_paredes, tab_muros, tab_fungi, tab_esc, tab_alertas, tab_planta = st.tabs([
     "📊 Resumo",
     "🔩 Vigas",
     "🏛️ Pilares",
     "⬜ Lajes",
     "⬛ Sapatas",
     "🧱 Paredes",
+    "🪨 Muros",
     "⚪ L. Fungiforme",
     "🪜 Escadas",
     "⚠️ Alertas",
@@ -735,15 +787,16 @@ tab_res, tab_vigas, tab_pilares, tab_lajes, tab_sapatas, tab_paredes, tab_fungi,
 
 # ── Resumo ────────────────────────────────────────────────────────────────────
 with tab_res:
-    mc = st.columns(8)
+    mc = st.columns(9)
     mc[0].metric("Pilares", len(p.columns))
     mc[1].metric("Vigas", len(p.beams))
     mc[2].metric("Lajes", len(p.slabs))
     mc[3].metric("Sapatas", len(p.footings))
     mc[4].metric("V. Amarração", len(p.tie_beams))
     mc[5].metric("Paredes", len(p.walls))
-    mc[6].metric("L. Fungi.", len(p.flat_slabs))
-    mc[7].metric("Escadas", len(p.stairs))
+    mc[6].metric("Muros", len(getattr(p, 'retaining_walls', [])))
+    mc[7].metric("L. Fungi.", len(p.flat_slabs))
+    mc[8].metric("Escadas", len(p.stairs))
 
     if scores:
         st.subheader("Score global")
@@ -936,6 +989,57 @@ with tab_paredes:
             for w in p.walls
         ]
         st.dataframe(pd.DataFrame(reinf_rows), use_container_width=True, hide_index=True)
+
+# ── Muros de betão ───────────────────────────────────────────────────────────
+with tab_muros:
+    rws = getattr(p, 'retaining_walls', [])
+    cfs = getattr(p, 'continuous_footings', [])
+    if not rws:
+        st.info("Sem muros de betão no projeto. Adiciona na barra lateral.")
+    else:
+        st.subheader("Muros de suporte em consola")
+        rows = []
+        for w in rws:
+            r = w.result
+            rows.append({
+                "ID": w.id,
+                "H ret. (m)": round(w.height_m, 2),
+                "e topo (cm)": round(w.stem_thickness_cm, 0),
+                "Largura base (m)": round(w.base_width_m, 2),
+                "Fh (kN/m)": round(r.earth_pressure_kn_m, 1) if r else "-",
+                "SF Desliz.": round(r.sliding_safety, 2) if r else "-",
+                "SF Derrub.": round(r.overturning_safety, 2) if r else "-",
+                "σ solo (kPa)": round(r.bearing_stress_mpa*1000, 1) if r else "-",
+                "U. Solo": round(r.bearing_utilization, 2) if r else "-",
+                "As haste (cm²/m)": round(r.required_as_stem_cm2_m, 2) if r else "-",
+                "As calcan. (cm²/m)": round(r.required_as_heel_cm2_m, 2) if r else "-",
+                "Estado": ("✓ OK" if r and r.sliding_ok and r.overturning_ok and r.bearing_ok
+                           else "⚠️ VERIFICAR"),
+            })
+        df_rw = pd.DataFrame(rows)
+        st.dataframe(style_df(df_rw, ["U. Solo"]), use_container_width=True, hide_index=True)
+        st.caption("SF Deslizamento ≥ 1.5 | SF Derrubamento ≥ 2.0 | σ ≤ σ_adm")
+
+    if cfs:
+        st.subheader("Sapatas corridas")
+        rows2 = []
+        for cf in cfs:
+            r = cf.result
+            rows2.append({
+                "ID": cf.id,
+                "Muro": cf.related_wall_id,
+                "Largura (cm)": round(cf.width_cm, 0),
+                "Altura (cm)": round(cf.height_cm, 0),
+                "Comp. (m)": round(cf.length_m, 1),
+                "σ solo (kPa)": round(r.soil_stress_mpa*1000, 1) if r else "-",
+                "U. Solo": round(r.soil_utilization, 2) if r else "-",
+                "MEd (kNm/m)": round(r.med_knm_m, 2) if r else "-",
+                "MRd (kNm/m)": round(r.mrd_knm_m, 2) if r else "-",
+                "U. Flex.": round(r.bending_utilization, 2) if r else "-",
+                "As req. (cm²/m)": round(r.required_as_cm2_m, 2) if r else "-",
+            })
+        df_cf = pd.DataFrame(rows2)
+        st.dataframe(style_df(df_cf, ["U. Solo", "U. Flex."]), use_container_width=True, hide_index=True)
 
 # ── Lajes fungiformes ─────────────────────────────────────────────────────────
 with tab_fungi:

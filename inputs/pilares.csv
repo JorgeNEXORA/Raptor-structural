@@ -1,0 +1,7 @@
+id,x,y,largura_cm,profundidade_cm,altura_m,forma,diametro_cm
+P1,0.0,0.0,25,25,3.0,retangular,
+P2,4.0,0.0,25,25,3.0,retangular,
+P3,8.0,0.0,25,25,3.0,retangular,
+P4,0.0,4.5,25,25,3.0,retangular,
+P5,4.0,4.5,25,25,3.0,retangular,
+P6,8.0,4.5,25,25,3.0,retangular,
