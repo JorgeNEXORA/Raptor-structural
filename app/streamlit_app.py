@@ -385,7 +385,8 @@ with st.sidebar:
                                                draw_slab_plan,
                                                draw_column_schedule,
                                                draw_footing_schedule,
-                                               draw_beam_schedule)
+                                               draw_beam_schedule,
+                                               draw_beam_schedule_dxf)
                 _p = st.session_state.project
                 if not st.session_state.get("drawings_ready"):
                     with st.spinner("A gerar desenhos…"):
@@ -395,6 +396,7 @@ with st.sidebar:
                         st.session_state["img_pilares"]   = draw_column_schedule(_p)
                         st.session_state["img_sapatas"]   = draw_footing_schedule(_p)
                         st.session_state["img_vigas"]     = draw_beam_schedule(_p)
+                        st.session_state["dxf_vigas"]     = draw_beam_schedule_dxf(_p)
                         st.session_state["drawings_ready"] = True
                 st.download_button("⬇  Planta Fundações",
                     data=st.session_state["img_fundacoes"],
@@ -418,9 +420,15 @@ with st.sidebar:
                         file_name="quadro_sapatas.png", mime="image/png",
                         use_container_width=True)
                 if st.session_state.get("img_vigas"):
-                    st.download_button("⬇  Quadro de Vigas",
+                    st.download_button("⬇  Quadro de Vigas (PNG)",
                         data=st.session_state["img_vigas"],
                         file_name="quadro_vigas.png", mime="image/png",
+                        use_container_width=True)
+                if st.session_state.get("dxf_vigas"):
+                    st.download_button("⬇  Quadro de Vigas (DXF)",
+                        data=st.session_state["dxf_vigas"],
+                        file_name="quadro_vigas.dxf",
+                        mime="application/octet-stream",
                         use_container_width=True)
             except Exception as _e:
                 st.error(f"Erro ao gerar desenhos: {_e}")

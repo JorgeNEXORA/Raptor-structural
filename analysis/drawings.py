@@ -1019,3 +1019,346 @@ def draw_beam_schedule(project: Project) -> bytes:
         _draw_frame_elevation(ax, direction, bms, col_map, idx + 1)
 
     return _fig_to_bytes(fig, dpi=180)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DXF export — Pormenores de Vigas
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _dxf_rect(msp, x0, y0, w, h, layer, lw=25, close=True):
+    pts = [(x0, y0), (x0+w, y0), (x0+w, y0+h), (x0, y0+h)]
+    msp.add_lwpolyline(pts, close=close, dxfattribs={'layer': layer, 'lineweight': lw})
+
+
+def _dxf_hatch(msp, x0, y0, w, h, layer, pattern='ANSI31', scale=0.04):
+    hatch = msp.add_hatch(dxfattribs={'layer': layer})
+    hatch.set_pattern_fill(pattern, scale=scale, angle=45)
+    hatch.paths.add_polyline_path(
+        [(x0,y0),(x0+w,y0),(x0+w,y0+h),(x0,y0+h)], is_closed=True)
+
+
+def _dxf_text(msp, txt, x, y, h, layer, align='LEFT', color=None):
+    from ezdxf.enums import TextEntityAlignment
+    align_map = {
+        'LEFT':   TextEntityAlignment.LEFT,
+        'CENTER': TextEntityAlignment.MIDDLE_CENTER,
+        'RIGHT':  TextEntityAlignment.RIGHT,
+        'ML':     TextEntityAlignment.MIDDLE_LEFT,
+        'MR':     TextEntityAlignment.MIDDLE_RIGHT,
+    }
+    attribs = {'height': h, 'layer': layer}
+    if color is not None:
+        attribs['color'] = color
+    t = msp.add_text(txt, dxfattribs=attribs)
+    t.set_placement((x, y), align=align_map.get(align, TextEntityAlignment.LEFT))
+
+
+def _dxf_dim_linear(msp, x0, x1, y_dim, tick_h, txt, layer, h_txt):
+    """Horizontal dimension line from x0 to x1 at y=y_dim."""
+    # Main dimension line
+    msp.add_line((x0, y_dim), (x1, y_dim), dxfattribs={'layer': layer, 'lineweight': 13})
+    # Ticks
+    for xd in [x0, x1]:
+        msp.add_line((xd, y_dim - tick_h*0.5), (xd, y_dim + tick_h*0.5),
+                     dxfattribs={'layer': layer, 'lineweight': 13})
+    # Arrow-like serifs
+    for xd, sign in [(x0, 1), (x1, -1)]:
+        msp.add_line((xd, y_dim),
+                     (xd + sign * tick_h * 0.8, y_dim + tick_h * 0.4),
+                     dxfattribs={'layer': layer, 'lineweight': 13})
+        msp.add_line((xd, y_dim),
+                     (xd + sign * tick_h * 0.8, y_dim - tick_h * 0.4),
+                     dxfattribs={'layer': layer, 'lineweight': 13})
+    _dxf_text(msp, txt, (x0+x1)/2, y_dim + tick_h*0.7, h_txt, layer, 'CENTER')
+
+
+def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off):
+    """Draw one pórtico frame into DXF model space at vertical offset y_off."""
+    # ── column positions ──────────────────────────────────────────────────────
+    col_pos, col_obj = {}, {}
+    for b in beams:
+        for nid in [b.start_node, b.end_node]:
+            if nid not in col_pos:
+                c = col_map.get(nid)
+                if c:
+                    col_pos[nid] = c.x if direction == 'X' else c.y
+                    col_obj[nid] = c
+
+    sorted_col_ids = sorted(col_pos, key=lambda cid: col_pos[cid])
+    if len(sorted_col_ids) < 2:
+        return
+
+    # ── span list ─────────────────────────────────────────────────────────────
+    span_list = []
+    for b in beams:
+        p1, p2 = col_pos.get(b.start_node), col_pos.get(b.end_node)
+        if p1 is None or p2 is None:
+            continue
+        if p1 <= p2:
+            lid, rid = b.start_node, b.end_node
+        else:
+            p1, p2 = p2, p1
+            lid, rid = b.end_node, b.start_node
+        span_list.append((p1, p2, b, lid, rid))
+    span_list.sort(key=lambda t: t[0])
+    if not span_list:
+        return
+
+    # ── geometry (model-space metres) ─────────────────────────────────────────
+    bh       = beams[0].height_cm / 100
+    bw       = beams[0].width_cm  / 100
+    cover    = 0.025
+    col_h    = col_obj[sorted_col_ids[0]].height_m
+    cst      = col_h * 0.45       # col stub top
+    csb      = col_h * 0.35       # col stub bottom
+    beam_top = y_off
+    beam_bot = y_off - bh
+
+    cs_scale = 3.5
+    cs_w     = bw  * cs_scale
+    cs_h_d   = bh  * cs_scale
+    cs_gap   = cst * 0.15
+    cs_y_bot = beam_top + cst + cs_gap
+
+    # text heights (appear correctly at 1:50 on paper)
+    TH_LG  = 0.175   # large: span dimension  (3.5mm @1:50)
+    TH_MD  = 0.125   # medium: bar labels      (2.5mm)
+    TH_SM  = 0.100   # small: secondary text   (2.0mm)
+    TH_XS  = 0.085   # extra-small: Msd/Vsd    (1.7mm)
+
+    # ── EACH SPAN ─────────────────────────────────────────────────────────────
+    for x_l, x_r, beam, lid, rid in span_list:
+        span = x_r - x_l
+        mid  = (x_l + x_r) / 2
+        rr   = beam.reinforcement_result or {}
+        vsd  = beam.result.vsd_kn          if beam.result else 0.0
+        msd  = beam.result.msd_knm         if beam.result else 0.0
+        as_r = beam.result.required_as_cm2 if beam.result else 2.0
+        d_cm = beam.effective_depth_cm
+
+        n_bot, dia_bot, _ = _beam_bottom_bars(as_r)
+        phi_e, s_e = _beam_stirrup_design(vsd, d_cm)
+        phi_m = max(phi_e - 2, 6)
+        s_m   = min(int(s_e * 1.5 / 5) * 5, 20)
+        s_m   = max(s_m, s_e)
+
+        col_w_l = (col_obj[lid].width_cm if direction == 'X'
+                   else col_obj[lid].depth_cm) if lid in col_obj else 25
+        col_w_r = (col_obj[rid].width_cm if direction == 'X'
+                   else col_obj[rid].depth_cm) if rid in col_obj else 25
+
+        # Beam rectangle
+        _dxf_rect(msp, x_l, beam_bot, span, bh, 'VIGAS', lw=35)
+
+        # Stirrups – 3 zones
+        zone   = span / 4.0
+        s_e_m  = s_e / 100.0
+        s_m_m  = s_m / 100.0
+
+        def draw_stirs_dxf(x_start, x_end, spacing, lw=13):
+            xs = x_start
+            n  = 0
+            while xs <= x_end + 1e-4:
+                msp.add_line((xs, beam_bot + cover), (xs, beam_top - cover),
+                             dxfattribs={'layer': 'ESTRIBOS', 'lineweight': lw, 'color': 8})
+                xs += spacing
+                n  += 1
+            return n
+
+        n_el = draw_stirs_dxf(x_l + cover, x_l + zone, s_e_m, 18)
+        n_mi = draw_stirs_dxf(x_l + zone,  x_r - zone, s_m_m, 13)
+        n_er = draw_stirs_dxf(x_r - zone,  x_r - cover, s_e_m, 18)
+
+        # zone boundary
+        for xz in [x_l + zone, x_r - zone]:
+            msp.add_line((xz, beam_bot), (xz, beam_top),
+                         dxfattribs={'layer': 'ESTRIBOS', 'linetype': 'DASHED',
+                                     'lineweight': 9, 'color': 8})
+
+        # Bottom bars
+        inset_l = col_w_l / 200
+        inset_r = col_w_r / 200
+        y_b = beam_bot + cover + 0.008
+        msp.add_line((x_l + inset_l, y_b), (x_r - inset_r, y_b),
+                     dxfattribs={'layer': 'ARMADURA_INF', 'lineweight': 50, 'color': 1})
+
+        c_bot   = int(span * 100 - col_w_l/2 - col_w_r/2 + 15)
+        bot_txt = rr.get('bottom_text') or f'{n_bot}Ø{dia_bot}'
+        _dxf_text(msp, f'{bot_txt}  C={c_bot}', mid, y_b + TH_SM*0.6, TH_MD, 'TEXTO',
+                  'CENTER', color=1)
+
+        # Top hanger bars (dashed)
+        y_h = beam_top - cover - 0.010
+        msp.add_line((x_l + inset_l, y_h), (x_r - inset_r, y_h),
+                     dxfattribs={'layer': 'ARMADURA_SUP', 'lineweight': 25,
+                                 'linetype': 'DASHED', 'color': 2})
+        c_hang = c_bot
+        _dxf_text(msp, f'2Ø12  C={c_hang} (m.)', mid, y_h + TH_XS*0.5,
+                  TH_SM, 'TEXTO', 'CENTER', color=2)
+
+        # Stirrup labels (below beam)
+        y_sl = beam_bot - TH_SM * 0.6
+        _dxf_text(msp, f'{n_el}xØ{phi_e} a/{s_e}',
+                  x_l + zone*0.5, y_sl, TH_SM, 'TEXTO', 'CENTER')
+        if n_mi > 0:
+            _dxf_text(msp, f'{n_mi}xØ{phi_m} a/{s_m}',
+                      mid, y_sl, TH_SM, 'TEXTO', 'CENTER')
+        _dxf_text(msp, f'{n_er}xØ{phi_e} a/{s_e}',
+                  x_r - zone*0.5, y_sl, TH_SM, 'TEXTO', 'CENTER')
+
+        # Msd / Vsd inside beam
+        _dxf_text(msp, f'Msd={msd:.1f}kNm  Vsd={vsd:.1f}kN',
+                  mid, beam_bot + bh*0.3, TH_XS, 'TEXTO', 'CENTER', color=9)
+
+        # Beam ID
+        _dxf_text(msp, f'{beam.id}  ({int(bw*100)}x{int(bh*100)})',
+                  mid, beam_bot + bh*0.65, TH_SM, 'TEXTO', 'CENTER', color=8)
+
+        # Span dimension
+        y_arr = beam_top + cst * 0.55
+        _dxf_dim_linear(msp, x_l, x_r, y_arr, TH_LG * 0.7,
+                        f'{span:.3f} m', 'COTAS', TH_LG)
+
+        # ── Cross-section above span ──────────────────────────────────────────
+        cx    = mid
+        cy_b  = cs_y_bot
+        # rectangle
+        _dxf_rect(msp, cx - cs_w/2, cy_b, cs_w, cs_h_d, 'CORTES', lw=25)
+        # stirrup inner
+        cov_s = cs_w * 0.10
+        _dxf_rect(msp, cx - cs_w/2 + cov_s, cy_b + cov_s,
+                  cs_w - 2*cov_s, cs_h_d - 2*cov_s, 'ESTRIBOS', lw=13)
+        # bottom bar circles
+        bar_r = cs_w * 0.055
+        for k in range(n_bot):
+            bx = (cx - cs_w/2 + cov_s + k*(cs_w - 2*cov_s)/max(n_bot-1, 1)
+                  if n_bot > 1 else cx)
+            msp.add_circle((bx, cy_b + cov_s + bar_r),
+                           bar_r, dxfattribs={'layer': 'ARMADURA_INF', 'color': 1})
+        # top hanger bar circles
+        for bxh in [cx - cs_w/2 + cov_s, cx + cs_w/2 - cov_s]:
+            msp.add_circle((bxh, cy_b + cs_h_d - cov_s - bar_r*0.8),
+                           bar_r*0.75, dxfattribs={'layer': 'ARMADURA_SUP', 'color': 2})
+        # label
+        _dxf_text(msp, f'{int(bw*100)}x{int(bh*100)} cm  [{n_bot}Ø{dia_bot}]',
+                  cx, cs_y_bot + cs_h_d + TH_SM*0.6, TH_SM, 'TEXTO', 'CENTER')
+
+    # ── COLUMN STUBS ──────────────────────────────────────────────────────────
+    for cid in sorted_col_ids:
+        col = col_obj[cid]
+        pos = col_pos[cid]
+        cw  = (col.width_cm if direction == 'X' else col.depth_cm) / 100
+
+        for y0s, hs in [(beam_top, cst), (beam_bot - csb, csb)]:
+            _dxf_rect(msp, pos - cw/2, y0s, cw, hs, 'PILARES', lw=35)
+            _dxf_hatch(msp, pos - cw/2, y0s, cw, hs, 'PILARES')
+
+        _dxf_text(msp, cid, pos, beam_top + cst + TH_MD*0.3, TH_MD,
+                  'TEXTO', 'CENTER', color=7)
+        _dxf_text(msp, f'{int(col.width_cm)}x{int(col.depth_cm)}',
+                  pos, beam_bot - csb - TH_SM*0.6, TH_SM, 'TEXTO', 'CENTER', color=8)
+
+    # ── TOP SUPPORT BARS at columns ────────────────────────────────────────────
+    for cid in sorted_col_ids:
+        pos = col_pos[cid]
+        lefts  = [(xl,xr) for xl,xr,b,l,r in span_list if abs(xr-pos) < 0.02]
+        rights = [(xl,xr) for xl,xr,b,l,r in span_list if abs(xl-pos) < 0.02]
+        if not lefts and not rights:
+            continue
+        x_ext_l = pos - (lefts[0][1]  - lefts[0][0]) / 4 if lefts  else pos
+        x_ext_r = pos + (rights[0][1] - rights[0][0]) / 4 if rights else pos
+        if x_ext_l >= x_ext_r:
+            continue
+        y_ts = beam_top - cover - 0.012
+        msp.add_line((x_ext_l, y_ts), (x_ext_r, y_ts),
+                     dxfattribs={'layer': 'ARMADURA_SUP', 'lineweight': 35, 'color': 2})
+        c_sup = int((x_ext_r - x_ext_l) * 100)
+        _dxf_text(msp, f'2Ø12  C={c_sup}',
+                  pos, y_ts - TH_SM*0.6, TH_SM, 'TEXTO', 'CENTER', color=2)
+
+    # ── Frame title ────────────────────────────────────────────────────────────
+    c0 = col_obj[sorted_col_ids[0]]
+    cv = c0.y if direction == 'X' else c0.x
+    al = 'Y' if direction == 'X' else 'X'
+    x0_fr = col_pos[sorted_col_ids[0]]
+    msds  = [f'{(b.result.msd_knm if b.result else 0):.0f}' for b in beams]
+    title = (f'PORTICO {frame_num}  ({al}={cv:.2f}m)  1:50  '
+             f'Vigas {int(beams[0].width_cm)}x{int(beams[0].height_cm)} cm  '
+             f'Msd=[{", ".join(msds)}] kNm')
+    _dxf_text(msp, title, x0_fr, beam_top + cst + TH_LG*1.2, TH_LG,
+              'TEXTO', 'LEFT', color=7)
+
+
+def draw_beam_schedule_dxf(project: 'Project') -> bytes:
+    """Generate DXF file with pormenores de vigas for all frames."""
+    try:
+        import ezdxf
+    except ImportError:
+        return b""
+
+    beams_with_results = [b for b in project.beams if b.result]
+    if not beams_with_results:
+        return b""
+
+    col_map = {c.id: c for c in project.columns}
+    frames  = _group_beams_into_frames(beams_with_results, col_map)
+    if not frames:
+        return b""
+
+    doc = ezdxf.new('R2010')
+    doc.header['$INSUNITS'] = 6   # metres
+    doc.header['$MEASUREMENT'] = 1  # metric
+
+    # Ensure DASHED linetype
+    if 'DASHED' not in doc.linetypes:
+        doc.linetypes.add('DASHED', pattern=[0.3, -0.15])
+
+    # Layers
+    for lname, color in [
+        ('VIGAS',        7),
+        ('PILARES',      8),
+        ('ARMADURA_INF', 1),
+        ('ARMADURA_SUP', 2),
+        ('ESTRIBOS',     3),
+        ('CORTES',       5),
+        ('COTAS',        1),
+        ('TEXTO',        7),
+    ]:
+        if lname not in doc.layers:
+            doc.layers.add(lname, color=color)
+
+    msp = doc.modelspace()
+
+    # Title block text
+    _dxf_text(msp, f'PORMENORES DE VIGAS — {project.name}',
+              0, 0, 0.25, 'TEXTO', 'LEFT', color=7)
+
+    # Compute Y-offset per frame (stack downward, starting at y=-1.5)
+    y_cursor = -1.5
+    for idx, (direction, bms) in enumerate(frames):
+        bh_i  = bms[0].height_cm / 100
+        ch_i  = col_map[list({b.start_node for b in bms} |
+                              {b.end_node   for b in bms}
+                              & col_map.keys())].height_m \
+                if False else bms[0].height_cm / 100 * 4   # fallback
+        # Get actual col height
+        for b in bms:
+            for nid in [b.start_node, b.end_node]:
+                if nid in col_map:
+                    ch_i = col_map[nid].height_m
+                    break
+            else:
+                continue
+            break
+
+        cst_i = ch_i * 0.45
+        csb_i = ch_i * 0.35
+        cs_h_i = bh_i * 3.5
+        frame_h = cst_i + bh_i + csb_i + cs_h_i + 0.60   # total Y extent
+
+        _dxf_frame_elevation(msp, direction, bms, col_map, idx + 1, y_cursor)
+        y_cursor -= (frame_h + 2.0)   # 2m spacing between frames
+
+    out = io.BytesIO()
+    doc.write(out)
+    return out.getvalue()
