@@ -674,8 +674,8 @@ def _group_beams_into_frames(beams, col_map):
     """Group beams into frames (pórticos) by collinear alignment.
     Returns list of (direction, sorted_beam_list).
     """
-    TOL_DEG = 20   # degrees: beam is 'X' if angle < 20°, else 'Y'
-    TOL_POS = 0.5  # m: group frames within 0.5 m of same transverse coordinate
+    TOL_DEG = 20
+    TOL_POS = 0.5
 
     def beam_angle_deg(b):
         c1 = col_map.get(b.start_node)
@@ -687,7 +687,7 @@ def _group_beams_into_frames(beams, col_map):
         return math.degrees(math.atan2(dy, dx + 1e-9))
 
     x_beams = [b for b in beams if beam_angle_deg(b) <= TOL_DEG]
-    y_beams = [b for b in beams if beam_angle_deg(b) >  TOL_DEG]
+    y_beams = [b for b in beams if beam_angle_deg(b) > TOL_DEG]
 
     def group_by_transverse(beam_list, direction):
         groups = {}
@@ -699,7 +699,6 @@ def _group_beams_into_frames(beams, col_map):
             transverse = ((c1.y + c2.y) / 2) if direction == 'X' else ((c1.x + c2.x) / 2)
             key = round(transverse / TOL_POS) * TOL_POS
             groups.setdefault(key, []).append(b)
-
         result = []
         for key in sorted(groups.keys()):
             def sort_key(b, d=direction):
@@ -708,17 +707,45 @@ def _group_beams_into_frames(beams, col_map):
             result.append((direction, sorted(groups[key], key=sort_key)))
         return result
 
-    frames = group_by_transverse(x_beams, 'X') + group_by_transverse(y_beams, 'Y')
-    return frames
+    return group_by_transverse(x_beams, 'X') + group_by_transverse(y_beams, 'Y')
+
+
+def _draw_beam_cross_section(ax, beam, n_bot, dia_bot, x_c, y_bot, width, height):
+    """Draw a beam cross-section at (x_c, y_bot) with given drawn width/height."""
+    cov = width * 0.09
+    bar_r = width * 0.05
+    # Outer box
+    ax.add_patch(patches.Rectangle(
+        (x_c - width / 2, y_bot), width, height,
+        fill=True, facecolor='#f0f0f0', edgecolor='black',
+        linewidth=0.8, zorder=5))
+    # Stirrup inner outline (dashed)
+    ax.add_patch(patches.Rectangle(
+        (x_c - width / 2 + cov, y_bot + cov),
+        width - 2 * cov, height - 2 * cov,
+        fill=False, edgecolor='black', linewidth=0.45,
+        linestyle='--', zorder=5))
+    # Bottom bars
+    for k in range(n_bot):
+        bx = (x_c - width / 2 + cov + k * (width - 2 * cov) / max(n_bot - 1, 1)
+              if n_bot > 1 else x_c)
+        ax.add_patch(patches.Circle(
+            (bx, y_bot + cov + bar_r), bar_r,
+            fill=True, facecolor='black', zorder=6))
+    # Top hanger bars (2)
+    for bx in [x_c - width / 2 + cov, x_c + width / 2 - cov]:
+        ax.add_patch(patches.Circle(
+            (bx, y_bot + height - cov - bar_r * 0.7), bar_r * 0.75,
+            fill=True, facecolor='black', zorder=6))
 
 
 def _draw_frame_elevation(ax, direction, beams, col_map, frame_num):
-    """Draw one frame elevation (pórtico) on ax."""
+    """Draw full pórtico: longitudinal elevation + cross-sections above each span."""
     ax.set_facecolor('white')
     ax.axis('off')
 
-    # ── collect column positions along frame direction ──────────────
-    col_pos = {}   # col_id → coordinate (m)
+    # ── column positions ─────────────────────────────────────────────
+    col_pos = {}
     col_obj = {}
     for b in beams:
         for nid in [b.start_node, b.end_node]:
@@ -732,160 +759,238 @@ def _draw_frame_elevation(ax, direction, beams, col_map, frame_num):
     if len(sorted_col_ids) < 2:
         return
 
-    # ── sort beams into spans ───────────────────────────────────────
-    span_list = []   # (x_left, x_right, beam)
+    # ── span list (x_left, x_right, beam, left_col_id, right_col_id) ──
+    span_list = []
     for b in beams:
-        p1 = col_pos.get(b.start_node)
-        p2 = col_pos.get(b.end_node)
+        p1, p2 = col_pos.get(b.start_node), col_pos.get(b.end_node)
         if p1 is None or p2 is None:
             continue
-        if p1 > p2:
+        if p1 <= p2:
+            lid, rid = b.start_node, b.end_node
+        else:
             p1, p2 = p2, p1
-        span_list.append((p1, p2, b))
+            lid, rid = b.end_node, b.start_node
+        span_list.append((p1, p2, b, lid, rid))
     span_list.sort(key=lambda t: t[0])
     if not span_list:
         return
 
-    # ── geometry ────────────────────────────────────────────────────
-    bh = beams[0].height_cm / 100        # beam height (m)
-    bw = beams[0].width_cm / 100         # beam width (m)
-    cover = 0.025                         # rebar cover (m)
+    # ── geometry ─────────────────────────────────────────────────────
+    bh = beams[0].height_cm / 100    # beam height (m)
+    bw = beams[0].width_cm / 100     # beam width (m)
+    cover = 0.025                     # rebar cover (m)
+    col_h = col_obj[sorted_col_ids[0]].height_m   # floor height (~3m)
+    col_stub_top = col_h * 0.50
+    col_stub_bot = col_h * 0.40
     beam_top = 0.0
     beam_bot = -bh
-    col_stub_top = bh * 1.3              # column stub above beam
-    col_stub_bot = bh * 0.6             # column stub below beam
 
-    # ── draw each span ──────────────────────────────────────────────
-    for x_l, x_r, beam in span_list:
+    # cross-section drawn size (at 3× magnification relative to meters)
+    cs_scale = 3.0
+    cs_w = bw * cs_scale
+    cs_h = bh * cs_scale
+    cs_gap = col_stub_top * 0.08
+    cs_y_bot = beam_top + col_stub_top + cs_gap
+    cs_y_top = cs_y_bot + cs_h
+
+    # ── DRAW EACH SPAN ──────────────────────────────────────────────
+    for x_l, x_r, beam, lid, rid in span_list:
         span = x_r - x_l
-        rr = beam.reinforcement_result or {}
-        vsd = beam.result.vsd_kn if beam.result else 0.0
-        msd = beam.result.msd_knm if beam.result else 0.0
-        as_req = beam.result.required_as_cm2 if beam.result else 2.0
+        mid  = (x_l + x_r) / 2
+        rr   = beam.reinforcement_result or {}
+        vsd  = beam.result.vsd_kn        if beam.result else 0.0
+        msd  = beam.result.msd_knm       if beam.result else 0.0
+        as_r = beam.result.required_as_cm2 if beam.result else 2.0
+        d_cm = beam.effective_depth_cm
 
-        n_bot, dia_bot, _ = _beam_bottom_bars(as_req)
-        phi_s, s_s = _beam_stirrup_design(vsd, beam.effective_depth_cm)
-        s_m = s_s / 100.0
+        n_bot, dia_bot, _ = _beam_bottom_bars(as_r)
+        phi_e, s_e = _beam_stirrup_design(vsd, d_cm)   # end-zone stirrups
+        # Mid-zone: one step lighter (max s = min(d/2, 20cm))
+        phi_m = max(phi_e - 2, 6)
+        s_m   = min(int(s_e * 1.5 / 5) * 5, 20)
+        s_m   = max(s_m, s_e)
 
-        # Beam outline
+        col_w_l = (col_obj[lid].width_cm if direction == 'X'
+                   else col_obj[lid].depth_cm) if lid in col_obj else 25
+        col_w_r = (col_obj[rid].width_cm if direction == 'X'
+                   else col_obj[rid].depth_cm) if rid in col_obj else 25
+
+        # ── Beam body ──────────────────────────────────────────────
         ax.add_patch(patches.Rectangle(
             (x_l, beam_bot), span, bh,
-            fill=True, facecolor='#f0f0f0',
-            edgecolor='black', linewidth=0.9, zorder=2))
+            fill=True, facecolor='#f8f8f8',
+            edgecolor='black', linewidth=1.0, zorder=2))
 
-        # Stirrup hatching (vertical lines at spacing s_m)
-        n_stir = max(1, int(span / s_m))
-        actual_spacing = span / n_stir
-        for k in range(n_stir + 1):
-            xs = x_l + k * actual_spacing
-            if xs > x_r + 1e-6:
-                break
-            ax.plot([xs, xs], [beam_bot + cover, beam_top - cover],
-                    color='#999999', linewidth=0.35, zorder=2, alpha=0.7)
+        # ── Stirrups in 3 zones ────────────────────────────────────
+        zone = span / 4.0
+        s_e_m = s_e / 100.0
+        s_m_m = s_m / 100.0
+        lw_e, lw_m = 0.45, 0.30
 
-        # ── BOTTOM bars ─────────────────────────────────────────────
-        inset = bw * 0.4
-        y_bot = beam_bot + cover + 0.007
-        ax.plot([x_l + inset, x_r - inset], [y_bot, y_bot],
-                color='black', linewidth=1.8, zorder=4, solid_capstyle='butt')
-        bot_label = rr.get("bottom_text") or f"{n_bot}Ø{dia_bot}"
-        ax.text((x_l + x_r) / 2, y_bot - 0.010,
-                bot_label, ha='center', va='top',
+        def draw_stirs(x_start, x_end, spacing, lw):
+            xs = x_start
+            n = 0
+            while xs <= x_end + 1e-4:
+                ax.plot([xs, xs], [beam_bot + cover, beam_top - cover],
+                        color='#666', linewidth=lw, alpha=0.75, zorder=2)
+                xs += spacing
+                n += 1
+            return n
+
+        n_el = draw_stirs(x_l + cover, x_l + zone, s_e_m, lw_e)
+        n_mi = draw_stirs(x_l + zone, x_r - zone, s_m_m, lw_m)
+        n_er = draw_stirs(x_r - zone, x_r - cover, s_e_m, lw_e)
+
+        # zone boundary marks
+        for xz in [x_l + zone, x_r - zone]:
+            ax.plot([xz, xz], [beam_bot, beam_top],
+                    color='#aaa', linewidth=0.5, linestyle=':', zorder=2)
+
+        # ── BOTTOM bars ────────────────────────────────────────────
+        inset_l = col_w_l / 200
+        inset_r = col_w_r / 200
+        y_b1 = beam_bot + cover + 0.006
+        ax.plot([x_l + inset_l, x_r - inset_r], [y_b1, y_b1],
+                color='black', linewidth=2.0, zorder=4, solid_capstyle='butt')
+
+        c_bot = int(span * 100 - col_w_l / 2 - col_w_r / 2 + 15)
+        bot_txt = rr.get("bottom_text") or f"{n_bot}Ø{dia_bot}"
+        ax.text(mid, y_b1 + 0.013,
+                f'{bot_txt}  C={c_bot}',
+                ha='center', va='bottom',
                 fontsize=5.5, fontweight='bold', zorder=5)
 
-        # Stirrups label at bottom (below beam)
-        stir_label = f"{n_stir}×Ø{phi_s} a/{s_s}"
-        ax.text((x_l + x_r) / 2, beam_bot - 0.04,
-                stir_label, ha='center', va='top', fontsize=5.0, color='#222222')
+        # ── BOTTOM 2nd layer if n_bot > 4 ──────────────────────────
+        if n_bot > 4:
+            y_b2 = y_b1 + 0.016
+            n2 = n_bot - 4
+            ax.plot([x_l + inset_l + 0.1, x_r - inset_r - 0.1], [y_b2, y_b2],
+                    color='black', linewidth=1.4, zorder=4, solid_capstyle='butt')
+            c_b2 = int(c_bot * 0.7)
+            ax.text(mid, y_b2 + 0.010,
+                    f'{n2}Ø{dia_bot}  C={c_b2}  2ª camada',
+                    ha='center', va='bottom', fontsize=4.8, zorder=5)
 
-        # ── TOP hanger bars (2Ø12) ──────────────────────────────────
-        y_top = beam_top - cover - 0.007
-        ax.plot([x_l + inset, x_r - inset], [y_top, y_top],
-                color='black', linewidth=1.0, zorder=4,
-                linestyle='--', dashes=(6, 3))
-        ax.text((x_l + x_r) / 2, y_top + 0.010,
-                '2Ø12', ha='center', va='bottom',
-                fontsize=5.0, style='italic', color='#444444')
+        # ── TOP HANGER bars (2Ø12 full span, dashed) ───────────────
+        y_h = beam_top - cover - 0.008
+        c_hang = int(span * 100 - col_w_l / 2 - col_w_r / 2 + 15)
+        ax.plot([x_l + inset_l, x_r - inset_r], [y_h, y_h],
+                color='black', linewidth=0.9, zorder=4,
+                linestyle='--', dashes=(5, 3))
+        ax.text(mid, y_h + 0.010,
+                f'2Ø12  C={c_hang}  (m.)',
+                ha='center', va='bottom',
+                fontsize=5.0, style='italic', color='#444', zorder=5)
 
-        # ── span label (double-headed arrow above column stub) ──────
-        y_arr = col_stub_top + 0.06
-        mid = (x_l + x_r) / 2
+        # ── Stirrup labels (below beam) ─────────────────────────────
+        y_sl = beam_bot - 0.06
+        ax.text(x_l + zone * 0.5, y_sl,
+                f'{n_el}ØØ{phi_e} a/{s_e}',
+                ha='center', va='top', fontsize=4.8)
+        if n_mi > 0:
+            ax.text(mid, y_sl,
+                    f'{n_mi}ØØ{phi_m} a/{s_m}',
+                    ha='center', va='top', fontsize=4.8)
+        ax.text(x_r - zone * 0.5, y_sl,
+                f'{n_er}ØØ{phi_e} a/{s_e}',
+                ha='center', va='top', fontsize=4.8)
+
+        # ── Msd/Vsd label inside beam ───────────────────────────────
+        ax.text(mid, -bh * 0.55,
+                f'Msd={msd:.0f}kNm  Vsd={vsd:.0f}kN',
+                ha='center', va='center', fontsize=4.5, color='#555', zorder=3)
+
+        # ── Beam label ──────────────────────────────────────────────
+        ax.text(mid, -bh * 0.20,
+                f'{beam.id}  ({int(bw*100)}×{int(bh*100)})',
+                ha='center', va='center',
+                fontsize=5.5, color='#333', style='italic', zorder=3)
+
+        # ── Span dimension arrow ────────────────────────────────────
+        y_arr = beam_top + col_stub_top * 0.65
         ax.annotate('', xy=(x_r, y_arr), xytext=(x_l, y_arr),
                     arrowprops=dict(arrowstyle='<->', color='black',
-                                   lw=0.8, mutation_scale=7), zorder=5)
-        ax.text(mid, y_arr + 0.025, f'{span:.3f}',
-                ha='center', va='bottom', fontsize=6.5)
+                                   lw=0.9, mutation_scale=7), zorder=5)
+        ax.text(mid, y_arr + 0.04, f'{span:.3f}',
+                ha='center', va='bottom', fontsize=7.5, fontweight='bold')
 
-        # ── Msd / Vsd annotation (small, below span) ────────────────
-        ax.text(mid, beam_top - bh * 0.48,
-                f'Msd={msd:.0f}kNm  Vsd={vsd:.0f}kN',
-                ha='center', va='center', fontsize=4.5, color='#555555')
+        # ── Cross-section above this span ────────────────────────────
+        _draw_beam_cross_section(ax, beam, n_bot, dia_bot,
+                                 mid, cs_y_bot, cs_w, cs_h)
+        ax.text(mid, cs_y_top + 0.04,
+                f'{int(bw*100)}×{int(bh*100)} cm',
+                ha='center', va='bottom',
+                fontsize=5.5, fontweight='bold')
 
-        # ── beam ID label (centred in span) ─────────────────────────
-        ax.text(mid, beam_bot + bh * 0.80,
-                beam.id, ha='center', va='center',
-                fontsize=5.0, color='#666666', style='italic')
-
-    # ── draw column stubs ───────────────────────────────────────────
+    # ── COLUMN STUBS ─────────────────────────────────────────────────
     for cid in sorted_col_ids:
         col = col_obj[cid]
         pos = col_pos[cid]
         cw = (col.width_cm if direction == 'X' else col.depth_cm) / 100
-        cd = (col.depth_cm if direction == 'X' else col.width_cm) / 100
 
-        # Above beam
-        ax.add_patch(patches.Rectangle(
-            (pos - cw / 2, beam_top), cw, col_stub_top,
-            fill=True, facecolor='#cccccc',
-            edgecolor='black', linewidth=0.9, zorder=3))
-        # Below beam
-        ax.add_patch(patches.Rectangle(
-            (pos - cw / 2, beam_bot - col_stub_bot), cw, col_stub_bot,
-            fill=True, facecolor='#cccccc',
-            edgecolor='black', linewidth=0.9, zorder=3))
+        for (y0, h, hatch) in [
+            (beam_top, col_stub_top, '///'),
+            (beam_bot - col_stub_bot, col_stub_bot, '///'),
+        ]:
+            ax.add_patch(patches.Rectangle(
+                (pos - cw / 2, y0), cw, h,
+                fill=True, facecolor='#d0d0d0',
+                edgecolor='black', linewidth=0.9, zorder=3))
+            ax.add_patch(patches.Rectangle(
+                (pos - cw / 2, y0), cw, h,
+                fill=False, edgecolor='#999', linewidth=0.3,
+                hatch=hatch, zorder=3))
 
-        # Hatch column section to distinguish from beam
-        ax.add_patch(patches.Rectangle(
-            (pos - cw / 2, beam_top), cw, col_stub_top,
-            fill=False, edgecolor='#888888', linewidth=0.3,
-            hatch='///', zorder=3))
+        # Column label
+        ax.text(pos, beam_top + col_stub_top + 0.02, cid,
+                ha='center', va='bottom', fontsize=6, fontweight='bold')
+        ax.text(pos, beam_bot - col_stub_bot - 0.03,
+                f'{int(col.width_cm)}×{int(col.depth_cm)}',
+                ha='center', va='top', fontsize=4.8, color='#555')
 
-        # Column label above stub
-        ax.text(pos, beam_top + col_stub_top + 0.025, cid,
-                ha='center', va='bottom', fontsize=5.5, fontweight='bold')
+    # ── TOP SUPPORT BARS at each column (2Ø12, extends L/4 each side) ──
+    for cid in sorted_col_ids:
+        pos = col_pos[cid]
+        lefts  = [(xl, xr, b) for xl, xr, b, l, r in span_list if abs(xr - pos) < 0.02]
+        rights = [(xl, xr, b) for xl, xr, b, l, r in span_list if abs(xl - pos) < 0.02]
+        if not lefts and not rights:
+            continue
+        x_ext_l = pos - (lefts[0][1]  - lefts[0][0])  / 4 if lefts  else pos
+        x_ext_r = pos + (rights[0][1] - rights[0][0]) / 4 if rights else pos
+        if x_ext_l >= x_ext_r:
+            continue
+        y_ts = beam_top - cover - 0.008
+        ax.plot([x_ext_l, x_ext_r], [y_ts - 0.012, y_ts - 0.012],
+                color='black', linewidth=1.3, zorder=6, solid_capstyle='butt')
+        c_sup = int((x_ext_r - x_ext_l) * 100)
+        ax.text(pos, y_ts - 0.024,
+                f'2Ø12  C={c_sup}',
+                ha='center', va='top',
+                fontsize=5.0, fontweight='bold', zorder=7)
 
-        # Dimension tick at bottom
-        y_tick = beam_bot - col_stub_bot
-        ax.plot([pos, pos], [y_tick - 0.02, y_tick + 0.02],
-                color='black', linewidth=0.8)
-        ax.text(pos, y_tick - 0.03, f'{col.width_cm:.0f}×{col.depth_cm:.0f}',
-                ha='center', va='top', fontsize=4.5, color='#555555')
+    # ── Frame title ───────────────────────────────────────────────────
+    c0 = col_obj[sorted_col_ids[0]]
+    cv = c0.y if direction == 'X' else c0.x
+    al = 'Y' if direction == 'X' else 'X'
+    title = (f'Pórtico {frame_num}    '
+             f'({al}={cv:.2f}m)    '
+             f'Escala 1:50    '
+             f'Vigas {int(beams[0].width_cm)}×{int(beams[0].height_cm)} cm')
+    ax.set_title(title, fontsize=7.5, fontweight='bold', loc='left', pad=5)
 
-    # ── frame title ─────────────────────────────────────────────────
-    c_first = col_obj[sorted_col_ids[0]]
-    coord_val = c_first.y if direction == 'X' else c_first.x
-    axis_lbl = 'Y' if direction == 'X' else 'X'
-    frame_title = (f'Pórtico {frame_num}    '
-                   f'({axis_lbl}={coord_val:.2f}m)    '
-                   f'Escala 1:50    '
-                   f'Vigas {int(beams[0].width_cm)}×{int(beams[0].height_cm)} cm')
-    ax.set_title(frame_title, fontsize=7, fontweight='bold', loc='left', pad=4)
-
-    # ── axis bounds ─────────────────────────────────────────────────
-    x_left_edge = col_pos[sorted_col_ids[0]]
-    x_right_edge = col_pos[sorted_col_ids[-1]]
-    total_span = x_right_edge - x_left_edge
-    margin = max(total_span * 0.03, bw)
-
-    ax.set_xlim(x_left_edge - margin - bw / 2,
-                x_right_edge + margin + bw / 2)
-    ax.set_ylim(beam_bot - col_stub_bot - 0.18,
-                beam_top + col_stub_top + 0.22)
+    # ── Axis bounds ───────────────────────────────────────────────────
+    x0 = col_pos[sorted_col_ids[0]]
+    x1 = col_pos[sorted_col_ids[-1]]
+    tot = x1 - x0
+    mg  = max(tot * 0.04, bw * 0.6)
+    ax.set_xlim(x0 - mg - bw / 2, x1 + mg + bw / 2)
+    ax.set_ylim(beam_bot - col_stub_bot - 0.30,
+                cs_y_top + 0.20)
     ax.set_aspect('equal')
 
 
 def draw_beam_schedule(project: Project) -> bytes:
-    """Draw frame elevation drawings (pormenores de vigas / pórticos)."""
+    """Draw pormenores de vigas: longitudinal frame elevation + cross-sections."""
     beams_with_results = [b for b in project.beams if b.result]
     if not beams_with_results:
         return b""
@@ -895,17 +1000,45 @@ def draw_beam_schedule(project: Project) -> bytes:
     if not frames:
         return b""
 
-    n_frames = len(frames)
-    fig_w = 18.0
-    row_h = 4.8   # inches per frame row
+    fig_w = 20.0   # inches
 
-    fig = plt.figure(figsize=(fig_w, n_frames * row_h + 1.0), facecolor='white')
+    # Compute adaptive height per frame
+    row_heights = []
+    for direction, bms in frames:
+        cp = {}
+        for b in bms:
+            for nid in [b.start_node, b.end_node]:
+                if nid not in cp:
+                    c = col_map.get(nid)
+                    if c:
+                        cp[nid] = c.x if direction == 'X' else c.y
+        if len(cp) < 2:
+            row_heights.append(5.0)
+            continue
+        x_span = max(cp.values()) - min(cp.values())
+        bh_i   = bms[0].height_cm / 100
+        ch_i   = col_map[list(cp.keys())[0]].height_m
+        cs_h_i = bh_i * 3.0
+        y_tot  = ch_i * 0.5 + bh_i + ch_i * 0.4 + cs_h_i + 0.6 + 0.5
+        # row height so that 1:50 scale fits fig_w
+        rh = (y_tot / max(x_span + bh_i, 0.1)) * fig_w
+        row_heights.append(max(min(rh, 12.0), 4.0))
+
+    fig_h = sum(row_heights) + 1.2
+    fig = plt.figure(figsize=(fig_w, fig_h), facecolor='white')
     fig.suptitle(f'PORMENORES DE VIGAS — {project.name}',
-                 fontsize=11, fontweight='bold', y=0.995)
+                 fontsize=12, fontweight='bold', y=0.998)
 
-    for idx, (direction, beams) in enumerate(frames):
-        ax = fig.add_subplot(n_frames, 1, idx + 1)
-        _draw_frame_elevation(ax, direction, beams, col_map, idx + 1)
+    # Build gridspec with variable row heights
+    from matplotlib.gridspec import GridSpec
+    gs = GridSpec(len(frames), 1, figure=fig,
+                  height_ratios=row_heights,
+                  left=0.01, right=0.99,
+                  top=0.97, bottom=0.01,
+                  hspace=0.25)
 
-    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    for idx, (direction, bms) in enumerate(frames):
+        ax = fig.add_subplot(gs[idx, 0])
+        _draw_frame_elevation(ax, direction, bms, col_map, idx + 1)
+
     return _fig_to_bytes(fig, dpi=150)
