@@ -166,6 +166,11 @@ with st.sidebar:
     st.divider()
     project_name = st.text_input("Nome do projeto", "Projeto Estrutural")
     location = st.text_input("Local", "Barcelos")
+    owner = st.text_input("Requerente / Dono de Obra", value="", key="owner")
+    building_type = st.selectbox("Tipo de Edifício",
+        ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"],
+        key="building_type")
+    designer = st.text_input("Projectista", value="", key="designer")
     soil_mpa = st.number_input(
         "Tensão admissível solo (MPa)",
         value=0.20, min_value=0.05, max_value=2.0, step=0.05, format="%.2f",
@@ -386,17 +391,26 @@ with st.sidebar:
                                                draw_column_schedule,
                                                draw_footing_schedule,
                                                draw_beam_schedule,
-                                               draw_beam_schedule_dxf)
+                                               draw_beam_schedule_dxf,
+                                               draw_foundation_plan_dxf,
+                                               draw_slab_plan_dxf,
+                                               draw_column_schedule_dxf,
+                                               draw_footing_schedule_dxf)
                 _p = st.session_state.project
                 if not st.session_state.get("drawings_ready"):
                     with st.spinner("A gerar desenhos…"):
-                        st.session_state["img_fundacoes"] = draw_foundation_plan(_p)
-                        st.session_state["img_piso"]      = draw_slab_plan(_p, "PLANTA DA LAJE DE PISO")
-                        st.session_state["img_cobertura"] = draw_slab_plan(_p, "PLANTA DA LAJE DE COBERTURA")
-                        st.session_state["img_pilares"]   = draw_column_schedule(_p)
-                        st.session_state["img_sapatas"]   = draw_footing_schedule(_p)
-                        st.session_state["img_vigas"]     = draw_beam_schedule(_p)
-                        st.session_state["dxf_vigas"]     = draw_beam_schedule_dxf(_p)
+                        st.session_state["img_fundacoes"]  = draw_foundation_plan(_p)
+                        st.session_state["img_piso"]       = draw_slab_plan(_p, "PLANTA DA LAJE DE PISO")
+                        st.session_state["img_cobertura"]  = draw_slab_plan(_p, "PLANTA DA LAJE DE COBERTURA")
+                        st.session_state["img_pilares"]    = draw_column_schedule(_p)
+                        st.session_state["img_sapatas"]    = draw_footing_schedule(_p)
+                        st.session_state["img_vigas"]      = draw_beam_schedule(_p)
+                        st.session_state["dxf_vigas"]      = draw_beam_schedule_dxf(_p)
+                        st.session_state["dxf_fundacoes"]  = draw_foundation_plan_dxf(_p)
+                        st.session_state["dxf_piso"]       = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE PISO")
+                        st.session_state["dxf_cobertura"]  = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE COBERTURA")
+                        st.session_state["dxf_pilares"]    = draw_column_schedule_dxf(_p)
+                        st.session_state["dxf_sapatas"]    = draw_footing_schedule_dxf(_p)
                         st.session_state["drawings_ready"] = True
                 st.download_button("⬇  Planta Fundações",
                     data=st.session_state["img_fundacoes"],
@@ -428,6 +442,36 @@ with st.sidebar:
                     st.download_button("⬇  Quadro de Vigas (DXF)",
                         data=st.session_state["dxf_vigas"],
                         file_name="quadro_vigas.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_fundacoes"):
+                    st.download_button("⬇  Fundações (DXF)",
+                        data=st.session_state["dxf_fundacoes"],
+                        file_name="fundacoes.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_piso"):
+                    st.download_button("⬇  Laje Piso (DXF)",
+                        data=st.session_state["dxf_piso"],
+                        file_name="laje_piso.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_cobertura"):
+                    st.download_button("⬇  Laje Cobertura (DXF)",
+                        data=st.session_state["dxf_cobertura"],
+                        file_name="laje_cobertura.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_pilares"):
+                    st.download_button("⬇  Pilares (DXF)",
+                        data=st.session_state["dxf_pilares"],
+                        file_name="quadro_pilares.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_sapatas"):
+                    st.download_button("⬇  Sapatas (DXF)",
+                        data=st.session_state["dxf_sapatas"],
+                        file_name="quadro_sapatas.dxf",
                         mime="application/octet-stream",
                         use_container_width=True)
             except Exception as _e:
@@ -486,6 +530,10 @@ if run_btn:
                 fck_mpa=fck_mpa,
                 fyk_mpa=fyk_mpa,
             )
+            # Apply project metadata
+            project.owner         = st.session_state.get("owner", "")
+            project.building_type = st.session_state.get("building_type", "Habitação")
+            project.designer      = st.session_state.get("designer", "")
             # Apply load configuration (safe even if model fields don't exist yet)
             project.gk_floor_kn_m2 = lcfg.get("gk_piso", 6.15)
             project.qk_floor_kn_m2 = lcfg.get("qk_piso", 2.0)

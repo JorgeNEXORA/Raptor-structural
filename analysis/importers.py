@@ -73,6 +73,8 @@ class CSVGeometryImporter:
                 else:
                     w = float(str(row.get("width_cm", width_cm)).replace(",", "."))
                     d = float(str(row.get("depth_cm", depth_cm)).replace(",", "."))
+                    w = max(w, 25.0)
+                    d = max(d, 25.0)
                     columns.append(Column(col_id, x, y, w, d, h, shape="rectangular"))
         return columns
 

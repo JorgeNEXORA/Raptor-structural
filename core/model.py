@@ -343,6 +343,10 @@ class Project:
     qk_floor_kn_m2: float = 2.0
     gk_roof_kn_m2: float  = 5.5
     qk_roof_kn_m2: float  = 1.0
+    # Project metadata
+    owner: str = ""           # Dono de obra / Requerente
+    building_type: str = ""   # Tipo de edifício (Habitação, Comércio, etc.)
+    designer: str = ""        # Projectista
     def add_alert(self, level: str, message: str) -> None:
         self.alerts.append(Alert(level=level, message=message))
     def add_advice(self, message: str) -> None:

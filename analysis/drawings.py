@@ -1362,3 +1362,372 @@ def draw_beam_schedule_dxf(project: 'Project') -> bytes:
     out = io.StringIO()
     doc.write(out)
     return out.getvalue().encode('utf-8')
+
+
+# ── shared DXF setup helper ──────────────────────────────────────────────────
+
+def _dxf_new_doc():
+    """Create standard DXF document with engineering layers."""
+    import ezdxf
+    doc = ezdxf.new('R2010')
+    doc.header['$INSUNITS'] = 6    # metres
+    doc.header['$MEASUREMENT'] = 1
+    if 'DASHED' not in doc.linetypes:
+        doc.linetypes.add('DASHED', pattern=[0.3, -0.15])
+    for lname, color in [
+        ('VIGAS', 7), ('PILARES', 8), ('LAJES', 5),
+        ('SAPATAS', 6), ('ARMADURA_INF', 1), ('ARMADURA_SUP', 2),
+        ('ESTRIBOS', 3), ('CORTES', 5), ('COTAS', 1), ('TEXTO', 7),
+        ('GRELHA', 9), ('LEGENDA', 7),
+    ]:
+        if lname not in doc.layers:
+            doc.layers.add(lname, color=color)
+    return doc, doc.modelspace()
+
+
+def _dxf_title_block(msp, project, drawing_title: str, scale: str, x0=0.0, y0=-2.0):
+    """Draw a simple title block at (x0, y0)."""
+    TH = 0.18
+    lines = [
+        f'OBRA: {getattr(project, "name", "")}',
+        f'REQUERENTE: {getattr(project, "owner", "")}',
+        f'LOCALIZAÇÃO: {getattr(project, "location", "")}',
+        f'TIPO: {getattr(project, "building_type", "")}',
+        f'PEÇA: {drawing_title}',
+        f'ESCALA: {scale}',
+        f'PROJECTISTA: {getattr(project, "designer", "")}',
+    ]
+    for k, line in enumerate(lines):
+        _dxf_text(msp, line, x0, y0 - k * TH * 1.4, TH, 'TEXTO', 'LEFT', color=7)
+
+
+def _dxf_col_square(msp, col, x_c, y_c, scale=1.0):
+    """Draw a filled column square at (x_c, y_c) in DXF. scale=pixels per cm."""
+    w = col.width_cm  * scale
+    d = col.depth_cm  * scale
+    _dxf_rect(msp, x_c - w/2, y_c - d/2, w, d, 'PILARES', lw=50)
+    # Solid hatch
+    hatch = msp.add_hatch(dxfattribs={'layer': 'PILARES', 'color': 254})
+    hatch.set_solid_fill()
+    hatch.paths.add_polyline_path(
+        [(x_c-w/2, y_c-d/2),(x_c+w/2, y_c-d/2),
+         (x_c+w/2, y_c+d/2),(x_c-w/2, y_c+d/2)], is_closed=True)
+
+
+# ── A. Planta de Fundações DXF ───────────────────────────────────────────────
+
+def draw_foundation_plan_dxf(project: 'Project') -> bytes:
+    """DXF foundation plan: footings, tie beams, columns."""
+    try:
+        doc, msp = _dxf_new_doc()
+    except ImportError:
+        return b""
+
+    TH_LG, TH_MD, TH_SM = 0.175, 0.125, 0.100
+    col_lookup   = {c.id: c for c in project.columns}
+    footing_map  = {f.related_column_id: f for f in project.footings}
+
+    # Footings (dashed)
+    for col in project.columns:
+        f = footing_map.get(col.id)
+        if not f:
+            continue
+        fw = f.width_a_cm / 100
+        fh = f.width_b_cm / 100
+        pts = [(col.x-fw/2, col.y-fh/2),(col.x+fw/2, col.y-fh/2),
+               (col.x+fw/2, col.y+fh/2),(col.x-fw/2, col.y+fh/2)]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={
+            'layer': 'SAPATAS', 'lineweight': 18, 'linetype': 'DASHED'})
+        _dxf_text(msp, f'{int(f.width_a_cm)}x{int(f.width_b_cm)}x{int(f.height_cm)}',
+                  col.x, col.y - fh/2 - TH_SM*0.8, TH_SM, 'TEXTO', 'CENTER', color=6)
+        _dxf_text(msp, f.id,
+                  col.x + fw/2 + 0.05, col.y, TH_SM, 'TEXTO', 'LEFT', color=6)
+
+    # Tie beams
+    for tb in project.tie_beams:
+        f1 = next((f for f in project.footings if f.id == tb.start_footing_id), None)
+        f2 = next((f for f in project.footings if f.id == tb.end_footing_id), None)
+        if not (f1 and f2):
+            continue
+        c1 = col_lookup.get(f1.related_column_id)
+        c2 = col_lookup.get(f2.related_column_id)
+        if not (c1 and c2):
+            continue
+        bw = tb.width_cm / 100
+        dx, dy = c2.x - c1.x, c2.y - c1.y
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        nx, ny = -dy/length*bw/2, dx/length*bw/2
+        pts = [(c1.x+nx, c1.y+ny),(c2.x+nx, c2.y+ny),
+               (c2.x-nx, c2.y-ny),(c1.x-nx, c1.y-ny)]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': 'VIGAS', 'lineweight': 25})
+        hatch = msp.add_hatch(dxfattribs={'layer': 'VIGAS', 'color': 8})
+        hatch.set_solid_fill()
+        hatch.paths.add_polyline_path(pts, is_closed=True)
+        mx, my = (c1.x+c2.x)/2, (c1.y+c2.y)/2
+        _dxf_text(msp, tb.id, mx, my, TH_SM, 'TEXTO', 'CENTER')
+
+    # Columns (solid)
+    for col in project.columns:
+        _dxf_col_square(msp, col, col.x, col.y, scale=0.01)
+        _dxf_text(msp, col.id, col.x, col.y + col.depth_cm/200 + TH_MD*0.4,
+                  TH_MD, 'TEXTO', 'CENTER', color=7)
+
+    _dxf_title_block(msp, project, 'PLANTA DE FUNDAÇÕES', '1:50')
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
+
+
+# ── B. Planta da Laje DXF ───────────────────────────────────────────────────
+
+def draw_slab_plan_dxf(project: 'Project', title: str = 'PLANTA DA LAJE DE PISO') -> bytes:
+    """DXF slab plan: bays with hatch, beams, columns."""
+    try:
+        doc, msp = _dxf_new_doc()
+    except ImportError:
+        return b""
+
+    TH_LG, TH_MD, TH_SM = 0.175, 0.125, 0.100
+    col_lookup = {c.id: c for c in project.columns}
+
+    # Slab bays from polygon_points
+    hatch_patterns = {
+        'one_way':    ('ANSI31', 0.08),
+        'two_way':    ('ANSI37', 0.08),
+        'ribbed':     ('ANSI32', 0.10),
+        'cantilever': ('ANSI33', 0.10),
+    }
+    for slab in project.slabs:
+        pts = slab.polygon_points
+        if not pts or len(pts) < 3:
+            continue
+        msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': 'LAJES', 'lineweight': 18})
+        st = str(getattr(slab.slab_type, 'value', slab.slab_type)).lower()
+        pat, sc = hatch_patterns.get(st, ('ANSI31', 0.08))
+        hatch = msp.add_hatch(dxfattribs={'layer': 'LAJES', 'color': 5})
+        hatch.set_pattern_fill(pat, scale=sc)
+        hatch.paths.add_polyline_path(pts, is_closed=True)
+        cx = sum(p[0] for p in pts) / len(pts)
+        cy = sum(p[1] for p in pts) / len(pts)
+        _dxf_text(msp, slab.id, cx, cy, TH_MD, 'TEXTO', 'CENTER', color=5)
+
+    # Beams
+    for b in project.beams:
+        c1 = col_lookup.get(b.start_node)
+        c2 = col_lookup.get(b.end_node)
+        if not (c1 and c2):
+            continue
+        bw = b.width_cm / 100
+        dx, dy = c2.x - c1.x, c2.y - c1.y
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        nx, ny = -dy/length*bw/2, dx/length*bw/2
+        pts = [(c1.x+nx, c1.y+ny),(c2.x+nx, c2.y+ny),
+               (c2.x-nx, c2.y-ny),(c1.x-nx, c1.y-ny)]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': 'VIGAS', 'lineweight': 35})
+        hatch = msp.add_hatch(dxfattribs={'layer': 'VIGAS', 'color': 8})
+        hatch.set_solid_fill()
+        hatch.paths.add_polyline_path(pts, is_closed=True)
+        mx, my = (c1.x+c2.x)/2, (c1.y+c2.y)/2
+        _dxf_text(msp, b.id, mx, my, TH_SM, 'TEXTO', 'CENTER', color=7)
+
+    # Columns
+    for col in project.columns:
+        _dxf_col_square(msp, col, col.x, col.y, scale=0.01)
+        _dxf_text(msp, col.id, col.x, col.y + col.depth_cm/200 + TH_SM*0.4,
+                  TH_SM, 'TEXTO', 'CENTER', color=7)
+
+    _dxf_title_block(msp, project, title, '1:50')
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
+
+
+# ── C. Quadro de Pilares DXF ─────────────────────────────────────────────────
+
+def draw_column_schedule_dxf(project: 'Project') -> bytes:
+    """DXF column schedule: cross-sections in a grid (3 rows × N cols)."""
+    try:
+        doc, msp = _dxf_new_doc()
+    except ImportError:
+        return b""
+    if not project.columns:
+        return b""
+
+    TH_MD, TH_SM, TH_XS = 0.125, 0.100, 0.085
+    CS = 1/35.0    # scale: 1cm column = 1/35 m in DXF  (≈1:35)
+    CELL_W = 1.60  # m per column cell
+    CELL_H = 2.20  # m per level row
+    LABEL_W = 0.6
+
+    levels = ['Cobertura', 'Piso 1', 'Fundação']
+
+    # Title
+    _dxf_text(msp, f'QUADRO DE PILARES — {project.name}',
+              0, 0.3, 0.22, 'TEXTO', 'LEFT', color=7)
+
+    for j, level in enumerate(levels):
+        y_row = -(j * CELL_H) - 0.6   # top of this row
+
+        # Level label (vertical)
+        _dxf_text(msp, level, -LABEL_W + 0.05, y_row - CELL_H/2, TH_MD,
+                  'TEXTO', 'LEFT', color=8)
+
+        # Row border line
+        total_w = len(project.columns) * CELL_W
+        msp.add_line((-LABEL_W, y_row), (total_w, y_row),
+                     dxfattribs={'layer': 'GRELHA', 'lineweight': 18})
+
+        for i, col in enumerate(project.columns):
+            x_cell = i * CELL_W
+            y_bot  = y_row - CELL_H
+
+            # Cell border
+            _dxf_rect(msp, x_cell, y_bot, CELL_W, CELL_H, 'GRELHA', lw=9)
+
+            # Column cross-section centred in upper 60% of cell
+            w = col.width_cm  * CS
+            d = col.depth_cm  * CS
+            cx = x_cell + CELL_W/2
+            cy = y_row - CELL_H*0.30   # centre at 30% from top
+
+            # Outer rectangle
+            _dxf_rect(msp, cx-w/2, cy-d/2, w, d, 'PILARES', lw=35)
+            # Stirrup inner
+            cov = col.width_cm * 0.10 * CS
+            _dxf_rect(msp, cx-w/2+cov, cy-d/2+cov, w-2*cov, d-2*cov, 'ESTRIBOS', lw=13)
+
+            # Bars
+            if col.result and col.result.adopted_as_cm2 > 0:
+                as_cm2 = col.result.adopted_as_cm2
+                opts = [(4,12,4.52),(4,16,8.04),(6,12,6.79),(8,12,9.05),(4,20,12.57)]
+                n_bars, bar_dia = 4, 12
+                for nb, bd, area in opts:
+                    if area >= as_cm2:
+                        n_bars, bar_dia = nb, bd
+                        break
+            else:
+                n_bars, bar_dia = 4, 12
+
+            bar_r = w * 0.07
+            if col.shape == 'circular':
+                r = w/2 - cov - bar_r
+                for k in range(n_bars):
+                    ang = k * 2 * math.pi / n_bars
+                    bx = cx + r * math.cos(ang)
+                    by = cy + r * math.sin(ang)
+                    msp.add_circle((bx, by), bar_r, dxfattribs={'layer': 'ARMADURA_INF', 'color': 1})
+            else:
+                bar_pos = [(cx-w/2+cov, cy-d/2+cov),(cx+w/2-cov, cy-d/2+cov),
+                           (cx+w/2-cov, cy+d/2-cov),(cx-w/2+cov, cy+d/2-cov)]
+                if n_bars >= 6:
+                    bar_pos += [(cx, cy-d/2+cov),(cx, cy+d/2-cov)]
+                if n_bars >= 8:
+                    bar_pos += [(cx-w/2+cov, cy),(cx+w/2-cov, cy)]
+                for bx, by in bar_pos[:n_bars]:
+                    msp.add_circle((bx, by), bar_r, dxfattribs={'layer': 'ARMADURA_INF', 'color': 1})
+
+            # Text below section
+            dim_lbl = f'Ø{int(col.width_cm)}' if col.shape=='circular' else f'{int(col.width_cm)}x{int(col.depth_cm)}'
+            y_txt = cy - d/2 - TH_SM*0.6
+            _dxf_text(msp, dim_lbl, cx, y_txt, TH_MD, 'TEXTO', 'CENTER', color=8)
+            _dxf_text(msp, f'{n_bars}Ø{bar_dia}', cx, y_txt - TH_SM*1.3, TH_SM, 'TEXTO', 'CENTER', color=1)
+            _dxf_text(msp, 'Ø8 a/20', cx, y_txt - TH_SM*2.5, TH_SM, 'TEXTO', 'CENTER', color=3)
+
+            # Column ID (only on first row)
+            if j == 0:
+                _dxf_text(msp, col.id, cx, y_row + TH_MD*0.3, TH_MD, 'TEXTO', 'CENTER', color=7)
+
+    # Bottom border
+    y_bot_all = -(len(levels) * CELL_H) - 0.6
+    total_w   = len(project.columns) * CELL_W
+    msp.add_line((-LABEL_W, y_bot_all), (total_w, y_bot_all),
+                 dxfattribs={'layer': 'GRELHA', 'lineweight': 18})
+
+    _dxf_title_block(msp, project, 'QUADRO DE PILARES', '1:35', 0, y_bot_all - 0.3)
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
+
+
+# ── D. Quadro de Sapatas DXF ─────────────────────────────────────────────────
+
+def draw_footing_schedule_dxf(project: 'Project') -> bytes:
+    """DXF footing schedule: plan + cross-section per footing."""
+    try:
+        doc, msp = _dxf_new_doc()
+    except ImportError:
+        return b""
+    if not project.footings:
+        return b""
+
+    TH_MD, TH_SM, TH_XS = 0.125, 0.100, 0.085
+    FS = 1/50.0   # scale: 1cm footing = 1/50 m in DXF (≈1:50)
+    CELL_W = 2.20
+    CELL_H = 3.40
+    col_map = {c.id: c for c in project.columns}
+
+    _dxf_text(msp, f'QUADRO DE SAPATAS — {project.name}',
+              0, 0.3, 0.22, 'TEXTO', 'LEFT', color=7)
+
+    for i, ft in enumerate(project.footings):
+        x0 = i * CELL_W
+        y0 = -0.6
+        _dxf_rect(msp, x0, y0 - CELL_H, CELL_W, CELL_H, 'GRELHA', lw=9)
+
+        fw = ft.width_a_cm * FS
+        fh = ft.width_b_cm * FS
+        fhgt = ft.height_cm * FS
+        cx = x0 + CELL_W/2
+        # Plan view (top 45% of cell)
+        plan_cy = y0 - CELL_H*0.22
+        _dxf_rect(msp, cx-fw/2, plan_cy-fh/2, fw, fh, 'SAPATAS', lw=25)
+        _dxf_hatch(msp, cx-fw/2, plan_cy-fh/2, fw, fh, 'SAPATAS', 'ANSI31', 0.05)
+
+        # Column stub on plan
+        col = col_map.get(ft.related_column_id)
+        if col:
+            cw = col.width_cm * FS
+            cd = col.depth_cm * FS
+            _dxf_rect(msp, cx-cw/2, plan_cy-cd/2, cw, cd, 'PILARES', lw=35)
+            hatch = msp.add_hatch(dxfattribs={'layer': 'PILARES', 'color': 254})
+            hatch.set_solid_fill()
+            hatch.paths.add_polyline_path(
+                [(cx-cw/2, plan_cy-cd/2),(cx+cw/2, plan_cy-cd/2),
+                 (cx+cw/2, plan_cy+cd/2),(cx-cw/2, plan_cy+cd/2)], is_closed=True)
+
+        # Cross-section view (middle 30% of cell)
+        sec_cy = y0 - CELL_H*0.58
+        _dxf_rect(msp, cx-fw/2, sec_cy, fw, fhgt, 'SAPATAS', lw=25)
+        if col:
+            _dxf_rect(msp, cx-col.width_cm*FS/2, sec_cy+fhgt, col.width_cm*FS, fhgt*0.5, 'PILARES', lw=25)
+
+        # Reinforcement bars (bottom of footing cross-section)
+        rr = ft.reinforcement_result or {}
+        as_x = ft.result.required_as_x_cm2 if ft.result else 0
+        as_y = ft.result.required_as_y_cm2 if ft.result else 0
+        bar_y = sec_cy + fhgt*0.12
+        msp.add_line((cx-fw/2*0.8, bar_y), (cx+fw/2*0.8, bar_y),
+                     dxfattribs={'layer': 'ARMADURA_INF', 'lineweight': 35, 'color': 1})
+
+        # Labels
+        y_lbl = y0 - CELL_H*0.72
+        _dxf_text(msp, ft.id, cx, y0 + TH_MD*0.3, TH_MD, 'TEXTO', 'CENTER', color=7)
+        _dxf_text(msp, f'{int(ft.width_a_cm)}x{int(ft.width_b_cm)}x{int(ft.height_cm)} cm',
+                  cx, y_lbl, TH_SM, 'TEXTO', 'CENTER', color=8)
+        if ft.result:
+            sigma = getattr(ft.result, 'sigma_soil_mpa', 0) * 1000
+            _dxf_text(msp, f'σ={sigma:.0f} kPa',
+                      cx, y_lbl - TH_SM*1.4, TH_SM, 'TEXTO', 'CENTER', color=8)
+        if as_x > 0:
+            _dxf_text(msp, f'As_x={as_x:.1f} cm²',
+                      cx, y_lbl - TH_SM*2.7, TH_SM, 'TEXTO', 'CENTER', color=1)
+        if as_y > 0:
+            _dxf_text(msp, f'As_y={as_y:.1f} cm²',
+                      cx, y_lbl - TH_SM*3.9, TH_SM, 'TEXTO', 'CENTER', color=1)
+
+    y_bot = -0.6 - CELL_H
+    _dxf_title_block(msp, project, 'QUADRO DE SAPATAS', '1:50',
+                     0, y_bot - 0.3)
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
