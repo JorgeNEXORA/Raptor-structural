@@ -912,15 +912,17 @@ with tab_lajes:
         r = s.result
         rows.append({
             "ID": s.id,
+            "Local.": getattr(s, 'level', 'piso').capitalize(),
             "Span (m)": round(s.span_m, 2),
             "h (cm)": round(s.thickness_cm, 1),
             "Tipo": s.slab_type.value if s.slab_type else "-",
             "Dir": s.direction or "-",
             "Gk (kN/m²)": round(s.gk_kn_m2, 2),
             "Qk (kN/m²)": round(s.qk_kn_m2, 2),
-            "Msd (kNm/m)": round(r.msd_knm_m, 2),
-            "U. Flecha": round(r.deflection_utilization, 2),
-            "U. Fissura": round(r.crack_utilization, 2),
+            "Msd (kNm/m)": round(r.msd_knm_m, 2) if r else "-",
+            "Catálogo": s.catalog_id or "-",
+            "U. Flecha": round(r.deflection_utilization, 2) if r else "-",
+            "U. Fissura": round(r.crack_utilization, 2) if r else "-",
         })
     df_slabs = pd.DataFrame(rows)
     st.dataframe(

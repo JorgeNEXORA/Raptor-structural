@@ -27,7 +27,10 @@
       "Bash(git commit *)",
       "Bash(git push *)",
       "Bash(python -c ' *)",
-      "Bash(.venv/Scripts/python.exe -c ' *)"
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(python -c \"from core.model import SlabPanel, SlabType, Project; from core.persistence import save_project, load_project; p=Project\\('t'\\); s=SlabPanel\\('L1',4,25,22,SlabType.RIBBED,5.5,2.0\\); s.level='cobertura'; p.slabs=[s]; b=save_project\\(p\\); p2=load_project\\(b\\); print\\('level after round-trip:', p2.slabs[0].level\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\('analysis/drawings.py', doraise=True\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import py_compile; [py_compile.compile\\(f, doraise=True\\) for f in ['analysis/importers.py','pipeline/auto_pipeline.py','core/persistence.py','app/streamlit_app.py']]; print\\('All OK'\\)\")"
     ]
   }
 }

@@ -51,6 +51,17 @@ class AutoPipeline:
             self.generator.apply_slab_loads(project.slabs, slab_loads)
             project.add_alert("info", f"Foram aplicadas cargas específicas a {len(slab_loads)} lajes via CSV.")
 
+        # Infer level (piso/cobertura) from loads when not already set by CSV
+        _gk_cob = project.gk_roof_kn_m2
+        _qk_cob = project.qk_roof_kn_m2
+        for s in project.slabs:
+            if not hasattr(s, 'level') or s.level == "piso":
+                # Heuristic: slabs with roof loads get level=cobertura
+                if abs(s.gk_kn_m2 - _gk_cob) < 0.5 and abs(s.qk_kn_m2 - _qk_cob) < 0.3:
+                    s.level = "cobertura"
+                else:
+                    s.level = "piso"
+
         # ── Slab analysis ─────────────────────────────────────────────────────
         behavior = SlabBehaviorEstimator()
         for s in project.slabs:

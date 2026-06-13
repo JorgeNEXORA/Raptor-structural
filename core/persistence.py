@@ -113,6 +113,7 @@ def _slab_from_dict(d: dict) -> SlabPanel:
         polygon_points=pts,
         area_m2=d.get("area_m2"),
         catalog_id=d.get("catalog_id"),
+        level=d.get("level", "piso"),
     )
     s.support_beam_ids          = d.get("support_beam_ids", [])
     s.support_beam_contributions = d.get("support_beam_contributions", {})

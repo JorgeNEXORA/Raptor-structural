@@ -134,8 +134,11 @@ class CSVSlabImporter:
                 raw_type   = str(row.get("type", "one_way")).strip().lower()
                 slab_type  = _SLAB_TYPE_MAP.get(raw_type, SlabType.ONE_WAY)
                 catalog_id = str(row.get("catalog_id", "")).strip() or None
+                raw_level  = str(row.get("level", row.get("nivel", "piso"))).strip().lower()
+                level = "cobertura" if raw_level in ("cobertura", "cob", "roof") else "piso"
                 s = SlabPanel(sid, span, thk, d, slab_type, gk, qk)
                 s.catalog_id = catalog_id
+                s.level = level
                 slabs.append(s)
         return slabs
 

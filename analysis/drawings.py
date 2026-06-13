@@ -131,6 +131,7 @@ def _draw_slab_bay(ax, x1, y1, x2, y2, slab):
 
     if sv == _ST_RIBBED:
         _draw_vigota_lines(ax, x1, y1, x2, y2, span_dir)
+        _draw_tarugo_lines(ax, x1, y1, x2, y2, span_dir)
         _draw_span_arrow(ax, x1, y1, x2, y2, span_dir)
 
     elif sv == _ST_TWO_WAY:
@@ -179,6 +180,39 @@ def _draw_vigota_lines(ax, x1, y1, x2, y2, span_dir, spacing=0.42):
             ax.plot([x, x], [y1 + margin, y2 - margin],
                     color=color, linewidth=lw, zorder=2)
             x += spacing
+
+
+def _draw_tarugo_lines(ax, x1, y1, x2, y2, span_dir, spacing=0.80):
+    """Tarugos — short perpendicular bands at regular intervals along the span.
+
+    Tarugos run perpendicular to vigotas and are drawn as slightly thicker
+    semi-transparent bands to distinguish them from the vigota lines.
+    Typical spacing: 0.80 m for spans ≤ 5 m; one at mid-span for shorter spans.
+    """
+    color = '#888888'
+    lw = 1.8
+    margin = 0.04
+    band_half = 0.06  # half-width of the tarugo band in metres
+    if span_dir == 'x':
+        # Tarugos run in Y direction, placed along X at intervals
+        span_len = x2 - x1
+        n_tar = max(1, round(span_len / spacing))
+        positions = [x1 + span_len * (k + 1) / (n_tar + 1) for k in range(n_tar)]
+        for xp in positions:
+            ax.add_patch(patches.Rectangle(
+                (xp - band_half, y1 + margin), band_half * 2, y2 - y1 - 2 * margin,
+                fill=True, facecolor='#cccccc', edgecolor='#888888',
+                linewidth=lw * 0.4, zorder=3, alpha=0.65))
+    else:
+        # Tarugos run in X direction, placed along Y at intervals
+        span_len = y2 - y1
+        n_tar = max(1, round(span_len / spacing))
+        positions = [y1 + span_len * (k + 1) / (n_tar + 1) for k in range(n_tar)]
+        for yp in positions:
+            ax.add_patch(patches.Rectangle(
+                (x1 + margin, yp - band_half), x2 - x1 - 2 * margin, band_half * 2,
+                fill=True, facecolor='#cccccc', edgecolor='#888888',
+                linewidth=lw * 0.4, zorder=3, alpha=0.65))
 
 
 def _draw_span_arrow(ax, x1, y1, x2, y2, span_dir):
@@ -297,14 +331,67 @@ def draw_slab_plan(project: Project, title: str = "PLANTA DA LAJE DE PISO") -> b
     for slab in project.slabs:
         pts = slab.polygon_points
         if pts and len(pts) >= 3:
-            hatch, fc = hatch_map.get(_slab_val(slab.slab_type), ('', '#eeeeee'))
+            sv = _slab_val(slab.slab_type)
+            hatch, fc = hatch_map.get(sv, ('', '#eeeeee'))
             ax.add_patch(patches.Polygon(pts, closed=True,
                                          fill=True, facecolor=fc, edgecolor='#888888',
                                          linewidth=0.6, hatch=hatch, zorder=1, alpha=0.7))
+            # Vigota + tarugo lines for ribbed slabs (using bounding box of polygon)
+            if sv == _ST_RIBBED:
+                px = [p[0] for p in pts]; py = [p[1] for p in pts]
+                bx1, bx2 = min(px), max(px); by1, by2 = min(py), max(py)
+                bw, bh = bx2 - bx1, by2 - by1
+                span_dir = 'x' if bw <= bh else 'y'
+                # Clip vigota/tarugo lines to polygon using matplotlib clip path
+                from matplotlib.patches import PathPatch
+                from matplotlib.path import Path as MPath
+                clip_patch = patches.Polygon(pts, closed=True, transform=ax.transData)
+                # Draw vigota lines (will be clipped)
+                color = '#aaaaaa'; margin = 0.05; lw = 0.45; sp = 0.42
+                if span_dir == 'x':
+                    y = by1 + sp
+                    while y < by2 - margin:
+                        ln, = ax.plot([bx1+margin, bx2-margin], [y, y],
+                                      color=color, linewidth=lw, zorder=2)
+                        ln.set_clip_path(clip_patch)
+                        y += sp
+                else:
+                    x = bx1 + sp
+                    while x < bx2 - margin:
+                        ln, = ax.plot([x, x], [by1+margin, by2-margin],
+                                      color=color, linewidth=lw, zorder=2)
+                        ln.set_clip_path(clip_patch)
+                        x += sp
+                # Draw tarugo bands
+                span_len = bw if span_dir == 'x' else bh
+                n_tar = max(1, round(span_len / 0.80))
+                band_half = 0.06
+                for k in range(n_tar):
+                    pos = (bx1 if span_dir=='x' else by1) + span_len * (k+1) / (n_tar+1)
+                    if span_dir == 'x':
+                        rect = patches.Rectangle((pos-band_half, by1+margin),
+                                                  band_half*2, bh-2*margin,
+                                                  fill=True, facecolor='#cccccc',
+                                                  edgecolor='#888888', linewidth=0.3,
+                                                  zorder=3, alpha=0.65)
+                    else:
+                        rect = patches.Rectangle((bx1+margin, pos-band_half),
+                                                  bw-2*margin, band_half*2,
+                                                  fill=True, facecolor='#cccccc',
+                                                  edgecolor='#888888', linewidth=0.3,
+                                                  zorder=3, alpha=0.65)
+                    rect.set_clip_path(clip_patch)
+                    ax.add_patch(rect)
+                _draw_span_arrow(ax, bx1, by1, bx2, by2, span_dir)
             cx = sum(p[0] for p in pts) / len(pts)
             cy = sum(p[1] for p in pts) / len(pts)
-            ax.text(cx, cy + 0.1, slab.id,
+            sv_label = {'one_way':'1D','two_way':'2D','ribbed':'Alig.','cantilever':'Cons.'}.get(sv,'')
+            cat = f'[{slab.catalog_id}]' if getattr(slab,'catalog_id',None) else ''
+            ax.text(cx, cy + 0.10, slab.id,
                     ha='center', va='center', fontsize=6.5, fontweight='bold', zorder=5)
+            ax.text(cx, cy - 0.20,
+                    f'{sv_label} h={slab.thickness_cm:.0f}cm L={slab.span_m:.1f}m {cat}'.strip(),
+                    ha='center', va='top', fontsize=5.0, color='#333333', zorder=5)
             drawn_slab_ids.add(slab.id)
 
     # --- Draw auto-detected bays with vigota lines ---
@@ -357,13 +444,14 @@ def draw_slab_plan(project: Project, title: str = "PLANTA DA LAJE DE PISO") -> b
     # --- Legend ---
     legend_items = [
         patches.Patch(facecolor='#fff8e8', edgecolor='#aaaaaa',
-                      label='Aligeirada (vigotas)'),
+                      label='Aligeirada (vigotas+tarugos)'),
         patches.Patch(facecolor='#ddeeff', hatch='///', edgecolor='#aaaaaa',
                       label='Laje 1 Dir.'),
         patches.Patch(facecolor='#eeddff', hatch='xxx', edgecolor='#aaaaaa',
                       label='Laje 2 Dir.'),
         patches.Patch(facecolor='#ffeedd', hatch='---', edgecolor='#aaaaaa',
                       label='Consola'),
+        patches.Patch(facecolor='#cccccc', edgecolor='#888888', label='Tarugo'),
         patches.Patch(facecolor='#888888', edgecolor='black', label='Viga'),
         patches.Patch(facecolor='black', edgecolor='black', label='Pilar'),
     ]
@@ -1735,8 +1823,74 @@ def draw_footing_schedule_dxf(project: 'Project') -> bytes:
 
 # ── Quadro de Lajes ───────────────────────────────────────────────────────────
 
+def _slab_schedule_rows(slabs, project):
+    """Build rows list for the slab schedule table."""
+    _TYPE_PT = {
+        "one_way": "Vigotada 1 dir.", "ribbed": "Aligeirada",
+        "two_way": "Maciça 2 dir.", "cantilever": "Consola",
+    }
+    fyk = getattr(project, 'fyk_mpa', 500.0)
+    fck = getattr(project, 'fck_mpa', 25.0)
+    fyd = min(fyk / 1.15, 435.0)
+    fcd = fck / 1.5
+    rows = []
+    for s in slabs:
+        tp = _TYPE_PT.get(_slab_val(s.slab_type), _slab_val(s.slab_type))
+        r = s.result
+        As_str = "-"
+        if r:
+            d_m = s.effective_depth_cm / 100
+            mu = r.msd_knm_m * 1000 / max(d_m**2 * fcd * 1e6, 1e-6)
+            mu = min(mu, 0.295)
+            omega = 1.0 - math.sqrt(max(1 - 2*mu, 0.0))
+            As = omega * d_m * fcd * 1e6 / (fyd * 1e6) * 10000
+            As = max(As, 0.0013 * 100 * s.effective_depth_cm)
+            As_str = f"{As:.2f}"
+        cat = s.catalog_id or "-"
+        rows.append([
+            s.id, tp, (s.direction or "-").upper(),
+            f"{s.span_m:.2f}", f"{s.thickness_cm:.0f}", f"{s.effective_depth_cm:.0f}",
+            f"{s.gk_kn_m2:.2f}", f"{s.qk_kn_m2:.2f}",
+            f"{r.msd_knm_m:.2f}" if r else "-",
+            As_str, cat,
+            f"{getattr(r,'deflection_utilization',0):.2f}" if r else "-",
+            f"{getattr(r,'crack_utilization',0):.2f}" if r else "-",
+        ])
+    return rows
+
+
+def _draw_slab_table(ax, rows, headers, hdr_color='#2c3e50', col_widths=None):
+    """Render a slab schedule table on the given Axes."""
+    if col_widths is None:
+        col_widths = [0.05, 0.13, 0.04, 0.07, 0.05, 0.05,
+                      0.07, 0.07, 0.08, 0.09, 0.09, 0.09, 0.09]
+    ax.axis('off')
+    if not rows:
+        ax.text(0.5, 0.5, 'Sem lajes', ha='center', va='center', transform=ax.transAxes)
+        return
+    tbl = ax.table(cellText=rows, colLabels=headers,
+                   cellLoc='center', loc='center', colWidths=col_widths)
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(8)
+    tbl.scale(1, 1.45)
+    for j in range(len(headers)):
+        tbl[0, j].set_facecolor(hdr_color)
+        tbl[0, j].set_text_props(color='white', fontweight='bold')
+    for i, row in enumerate(rows):
+        for j in range(len(headers)):
+            tbl[i+1, j].set_facecolor('#f8f9fa' if i % 2 == 0 else 'white')
+        for jj in [11, 12]:
+            try:
+                v = float(row[jj])
+                c = '#c0392b' if v >= 1.0 else ('#e67e22' if v >= 0.80 else '#27ae60')
+                tbl[i+1, jj].set_facecolor(c)
+                tbl[i+1, jj].set_text_props(color='white', fontweight='bold')
+            except Exception:
+                pass
+
+
 def draw_slab_schedule(project: Project) -> bytes:
-    """PNG slab schedule — one row per slab with type, span, thickness, loads, As."""
+    """PNG slab schedule — split into Piso and Cobertura sections."""
     slabs = project.slabs
     if not slabs:
         fig, ax = plt.subplots(figsize=(10, 2))
@@ -1744,76 +1898,34 @@ def draw_slab_schedule(project: Project) -> bytes:
         buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
         plt.close(fig); return buf.getvalue()
 
-    _TYPE_PT = {
-        "one_way": "Vigotada 1 dir.", "ribbed": "Aligeirada",
-        "two_way": "Maciça 2 dir.", "cantilever": "Consola",
-    }
-
     headers = ["ID", "Tipo", "Dir.", "Vão (m)", "h (cm)", "d (cm)",
-               "gk (kN/m²)", "qk (kN/m²)", "Msd (kNm/m)", "As req. (cm²/m)",
-               "Utiliz. Flexão", "Utiliz. Flecha"]
-    rows = []
-    for s in slabs:
-        tp = _TYPE_PT.get(_slab_val(s.slab_type), _slab_val(s.slab_type))
-        r = s.result
-        rows.append([
-            s.id, tp, (s.direction or "-").upper(),
-            f"{s.span_m:.2f}", f"{s.thickness_cm:.0f}", f"{s.effective_depth_cm:.0f}",
-            f"{s.gk_kn_m2:.2f}", f"{s.qk_kn_m2:.2f}",
-            f"{r.msd_knm_m:.2f}" if r else "-",
-            f"{r.reaction_uls_kn_m * s.span_m**2 / 8 / max(r.msd_knm_m,0.001) * (r.msd_knm_m / max(r.msd_knm_m,0.001)):.2f}" if r else "-",
-            f"{getattr(r,'deflection_utilization',0):.2f}" if r else "-",
-            f"{getattr(r,'crack_utilization',0):.2f}" if r else "-",
-        ])
-        # Fix As: use msd and back-calculate approximate As
-        if r:
-            fyk = getattr(project, 'fyk_mpa', 500.0)
-            fck = getattr(project, 'fck_mpa', 25.0)
-            fyd = min(fyk / 1.15, 435.0)
-            d_m = s.effective_depth_cm / 100
-            fcd = fck / 1.5
-            mu = r.msd_knm_m * 1000 / max(1.0 * d_m**2 * fcd * 1e6, 1e-6)
-            mu = min(mu, 0.295)
-            omega = 1.0 - math.sqrt(max(1 - 2*mu, 0.0))
-            As = omega * 1.0 * d_m * fcd * 1e6 / (fyd * 1e6) * 10000  # cm²/m
-            As = max(As, 0.0013 * 100 * s.effective_depth_cm)
-            rows[-1][9] = f"{As:.2f}"
+               "gk (kN/m²)", "qk (kN/m²)", "Msd (kNm/m)", "As (cm²/m)",
+               "Catálogo", "U.Flecha", "U.Fissura"]
 
-    n = len(rows)
-    fig_h = max(2.5, 0.45 * n + 1.5)
-    fig, ax = plt.subplots(figsize=(16, fig_h))
-    ax.axis('off')
+    piso_slabs  = [s for s in slabs if getattr(s, 'level', 'piso') != 'cobertura']
+    cob_slabs   = [s for s in slabs if getattr(s, 'level', 'piso') == 'cobertura']
 
-    col_widths = [0.06, 0.13, 0.05, 0.07, 0.06, 0.06, 0.08, 0.08, 0.09, 0.10, 0.10, 0.10]
-    tbl = ax.table(
-        cellText=rows, colLabels=headers,
-        cellLoc='center', loc='center',
-        colWidths=col_widths,
-    )
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(8.5)
-    tbl.scale(1, 1.5)
+    rows_piso = _slab_schedule_rows(piso_slabs, project)
+    rows_cob  = _slab_schedule_rows(cob_slabs,  project)
 
-    # Style header
-    for j in range(len(headers)):
-        tbl[0, j].set_facecolor('#2c3e50')
-        tbl[0, j].set_text_props(color='white', fontweight='bold')
+    n_piso = max(len(rows_piso), 1)
+    n_cob  = max(len(rows_cob), 1)
+    row_h  = 0.42
+    hdr_h  = 0.6
+    fig_h  = (n_piso + n_cob) * row_h + hdr_h * 2 + 2.0
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(17, max(4.0, fig_h)))
+    fig.suptitle(f'QUADRO DE LAJES — {project.name}', fontsize=13, fontweight='bold', y=1.01)
 
-    # Style data rows with utilization colouring
-    for i, row in enumerate(rows):
-        for j in range(len(headers)):
-            tbl[i+1, j].set_facecolor('#f8f9fa' if i % 2 == 0 else 'white')
-        # Colour utilization columns
-        for jj in [10, 11]:
-            try:
-                v = float(row[jj])
-                color = '#c0392b' if v >= 1.0 else ('#e67e22' if v >= 0.80 else '#27ae60')
-                tbl[i+1, jj].set_facecolor(color)
-                tbl[i+1, jj].set_text_props(color='white', fontweight='bold')
-            except Exception:
-                pass
+    ax1.set_title('LAJE DE PISO', fontsize=11, fontweight='bold',
+                  color='white', pad=4,
+                  bbox=dict(facecolor='#2980b9', edgecolor='none', pad=4))
+    _draw_slab_table(ax1, rows_piso, headers, hdr_color='#2980b9')
 
-    ax.set_title('QUADRO DE LAJES', fontsize=13, fontweight='bold', pad=12)
+    ax2.set_title('LAJE DE COBERTURA', fontsize=11, fontweight='bold',
+                  color='white', pad=4,
+                  bbox=dict(facecolor='#16a085', edgecolor='none', pad=4))
+    _draw_slab_table(ax2, rows_cob, headers, hdr_color='#16a085')
+
     fig.tight_layout()
     buf = io.BytesIO()
     fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')

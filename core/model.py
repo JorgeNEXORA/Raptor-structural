@@ -131,6 +131,7 @@ class SlabPanel:
     polygon_points: List[tuple] = field(default_factory=list)
     area_m2: Optional[float] = None
     catalog_id: Optional[str] = None   # Presdouro catalog reference, e.g. "P3-BL40x20-25"
+    level: str = "piso"                # "piso" or "cobertura"
     result: Optional[SlabResult] = None
 
 @dataclass
