@@ -855,72 +855,72 @@ def _draw_frame_elevation(ax, direction, beams, col_map, frame_num):
 
         c_bot = int(span * 100 - col_w_l / 2 - col_w_r / 2 + 15)
         bot_txt = rr.get("bottom_text") or f"{n_bot}Ø{dia_bot}"
-        ax.text(mid, y_b1 + 0.013,
+        ax.text(mid, y_b1 + 0.015,
                 f'{bot_txt}  C={c_bot}',
                 ha='center', va='bottom',
-                fontsize=5.5, fontweight='bold', zorder=5)
+                fontsize=7.0, fontweight='bold', zorder=5)
 
         # ── BOTTOM 2nd layer if n_bot > 4 ──────────────────────────
         if n_bot > 4:
-            y_b2 = y_b1 + 0.016
+            y_b2 = y_b1 + 0.022
             n2 = n_bot - 4
             ax.plot([x_l + inset_l + 0.1, x_r - inset_r - 0.1], [y_b2, y_b2],
-                    color='black', linewidth=1.4, zorder=4, solid_capstyle='butt')
+                    color='black', linewidth=1.6, zorder=4, solid_capstyle='butt')
             c_b2 = int(c_bot * 0.7)
-            ax.text(mid, y_b2 + 0.010,
+            ax.text(mid, y_b2 + 0.012,
                     f'{n2}Ø{dia_bot}  C={c_b2}  2ª camada',
-                    ha='center', va='bottom', fontsize=4.8, zorder=5)
+                    ha='center', va='bottom', fontsize=6.0, zorder=5)
 
         # ── TOP HANGER bars (2Ø12 full span, dashed) ───────────────
-        y_h = beam_top - cover - 0.008
+        y_h = beam_top - cover - 0.010
         c_hang = int(span * 100 - col_w_l / 2 - col_w_r / 2 + 15)
         ax.plot([x_l + inset_l, x_r - inset_r], [y_h, y_h],
-                color='black', linewidth=0.9, zorder=4,
+                color='black', linewidth=1.2, zorder=4,
                 linestyle='--', dashes=(5, 3))
-        ax.text(mid, y_h + 0.010,
+        ax.text(mid, y_h + 0.012,
                 f'2Ø12  C={c_hang}  (m.)',
                 ha='center', va='bottom',
-                fontsize=5.0, style='italic', color='#444', zorder=5)
+                fontsize=6.0, style='italic', color='#444', zorder=5)
 
         # ── Stirrup labels (below beam) ─────────────────────────────
-        y_sl = beam_bot - 0.06
+        y_sl = beam_bot - 0.08
         ax.text(x_l + zone * 0.5, y_sl,
                 f'{n_el}xØ{phi_e} a/{s_e}',
-                ha='center', va='top', fontsize=4.8)
+                ha='center', va='top', fontsize=6.5)
         if n_mi > 0:
             ax.text(mid, y_sl,
                     f'{n_mi}xØ{phi_m} a/{s_m}',
-                    ha='center', va='top', fontsize=4.8)
+                    ha='center', va='top', fontsize=6.5)
         ax.text(x_r - zone * 0.5, y_sl,
                 f'{n_er}xØ{phi_e} a/{s_e}',
-                ha='center', va='top', fontsize=4.8)
+                ha='center', va='top', fontsize=6.5)
 
         # ── Msd/Vsd label inside beam ───────────────────────────────
-        ax.text(mid, -bh * 0.55,
-                f'Msd={msd:.0f}kNm  Vsd={vsd:.0f}kN',
-                ha='center', va='center', fontsize=4.5, color='#555', zorder=3)
+        ax.text(mid, -bh * 0.62,
+                f'Msd={msd:.1f}kNm  Vsd={vsd:.1f}kN',
+                ha='center', va='center', fontsize=6.0, color='#444', zorder=3)
 
         # ── Beam label ──────────────────────────────────────────────
-        ax.text(mid, -bh * 0.20,
+        ax.text(mid, -bh * 0.22,
                 f'{beam.id}  ({int(bw*100)}×{int(bh*100)})',
                 ha='center', va='center',
-                fontsize=5.5, color='#333', style='italic', zorder=3)
+                fontsize=7.0, color='#222', style='italic', zorder=3)
 
         # ── Span dimension arrow ────────────────────────────────────
-        y_arr = beam_top + col_stub_top * 0.65
+        y_arr = beam_top + col_stub_top * 0.60
         ax.annotate('', xy=(x_r, y_arr), xytext=(x_l, y_arr),
                     arrowprops=dict(arrowstyle='<->', color='black',
-                                   lw=0.9, mutation_scale=7), zorder=5)
-        ax.text(mid, y_arr + 0.04, f'{span:.3f}',
-                ha='center', va='bottom', fontsize=7.5, fontweight='bold')
+                                   lw=1.0, mutation_scale=8), zorder=5)
+        ax.text(mid, y_arr + 0.05, f'{span:.3f} m',
+                ha='center', va='bottom', fontsize=9.0, fontweight='bold')
 
         # ── Cross-section above this span ────────────────────────────
         _draw_beam_cross_section(ax, beam, n_bot, dia_bot,
                                  mid, cs_y_bot, cs_w, cs_h)
-        ax.text(mid, cs_y_top + 0.04,
-                f'{int(bw*100)}×{int(bh*100)} cm',
+        ax.text(mid, cs_y_top + 0.05,
+                f'{int(bw*100)}×{int(bh*100)} cm  [{n_bot}Ø{dia_bot}]',
                 ha='center', va='bottom',
-                fontsize=5.5, fontweight='bold')
+                fontsize=7.0, fontweight='bold')
 
     # ── COLUMN STUBS ─────────────────────────────────────────────────
     for cid in sorted_col_ids:
@@ -942,11 +942,11 @@ def _draw_frame_elevation(ax, direction, beams, col_map, frame_num):
                 hatch=hatch, zorder=3))
 
         # Column label
-        ax.text(pos, beam_top + col_stub_top + 0.02, cid,
-                ha='center', va='bottom', fontsize=6, fontweight='bold')
-        ax.text(pos, beam_bot - col_stub_bot - 0.03,
+        ax.text(pos, beam_top + col_stub_top + 0.03, cid,
+                ha='center', va='bottom', fontsize=8, fontweight='bold')
+        ax.text(pos, beam_bot - col_stub_bot - 0.04,
                 f'{int(col.width_cm)}×{int(col.depth_cm)}',
-                ha='center', va='top', fontsize=4.8, color='#555')
+                ha='center', va='top', fontsize=7.0, color='#444')
 
     # ── TOP SUPPORT BARS at each column (2Ø12, extends L/4 each side) ──
     for cid in sorted_col_ids:
@@ -972,21 +972,20 @@ def _draw_frame_elevation(ax, direction, beams, col_map, frame_num):
     c0 = col_obj[sorted_col_ids[0]]
     cv = c0.y if direction == 'X' else c0.x
     al = 'Y' if direction == 'X' else 'X'
-    title = (f'Pórtico {frame_num}    '
-             f'({al}={cv:.2f}m)    '
-             f'Escala 1:50    '
-             f'Vigas {int(beams[0].width_cm)}×{int(beams[0].height_cm)} cm')
-    ax.set_title(title, fontsize=7.5, fontweight='bold', loc='left', pad=5)
+    msds = [f'{(b.result.msd_knm if b.result else 0):.0f}' for b in beams]
+    title = (f'Pórtico {frame_num}    ({al}={cv:.2f}m)    Escala 1:50    '
+             f'Vigas {int(beams[0].width_cm)}×{int(beams[0].height_cm)} cm    '
+             f'Msd=[{", ".join(msds)}] kNm')
+    ax.set_title(title, fontsize=8.5, fontweight='bold', loc='left', pad=6)
 
-    # ── Axis bounds ───────────────────────────────────────────────────
+    # ── Axis bounds (no equal aspect — let x dominate) ────────────────
     x0 = col_pos[sorted_col_ids[0]]
     x1 = col_pos[sorted_col_ids[-1]]
     tot = x1 - x0
-    mg  = max(tot * 0.04, bw * 0.6)
+    mg  = max(tot * 0.05, bw * 0.8)
     ax.set_xlim(x0 - mg - bw / 2, x1 + mg + bw / 2)
-    ax.set_ylim(beam_bot - col_stub_bot - 0.30,
-                cs_y_top + 0.20)
-    ax.set_aspect('equal')
+    ax.set_ylim(beam_bot - col_stub_bot - 0.40,
+                cs_y_top + 0.25)
 
 
 def draw_beam_schedule(project: Project) -> bytes:
@@ -1000,45 +999,23 @@ def draw_beam_schedule(project: Project) -> bytes:
     if not frames:
         return b""
 
-    fig_w = 20.0   # inches
+    fig_w = 22.0   # inches
 
-    # Compute adaptive height per frame
-    row_heights = []
-    for direction, bms in frames:
-        cp = {}
-        for b in bms:
-            for nid in [b.start_node, b.end_node]:
-                if nid not in cp:
-                    c = col_map.get(nid)
-                    if c:
-                        cp[nid] = c.x if direction == 'X' else c.y
-        if len(cp) < 2:
-            row_heights.append(5.0)
-            continue
-        x_span = max(cp.values()) - min(cp.values())
-        bh_i   = bms[0].height_cm / 100
-        ch_i   = col_map[list(cp.keys())[0]].height_m
-        cs_h_i = bh_i * 3.0
-        y_tot  = ch_i * 0.5 + bh_i + ch_i * 0.4 + cs_h_i + 0.6 + 0.5
-        # row height so that 1:50 scale fits fig_w
-        rh = (y_tot / max(x_span + bh_i, 0.1)) * fig_w
-        row_heights.append(max(min(rh, 12.0), 4.0))
-
-    fig_h = sum(row_heights) + 1.2
+    # Each frame gets a fixed row height (enough to read labels clearly)
+    row_h = 5.5   # inches per frame
+    fig_h = len(frames) * row_h + 1.0
     fig = plt.figure(figsize=(fig_w, fig_h), facecolor='white')
     fig.suptitle(f'PORMENORES DE VIGAS — {project.name}',
-                 fontsize=12, fontweight='bold', y=0.998)
+                 fontsize=14, fontweight='bold', y=0.999)
 
-    # Build gridspec with variable row heights
     from matplotlib.gridspec import GridSpec
     gs = GridSpec(len(frames), 1, figure=fig,
-                  height_ratios=row_heights,
                   left=0.01, right=0.99,
                   top=0.97, bottom=0.01,
-                  hspace=0.25)
+                  hspace=0.35)
 
     for idx, (direction, bms) in enumerate(frames):
         ax = fig.add_subplot(gs[idx, 0])
         _draw_frame_elevation(ax, direction, bms, col_map, idx + 1)
 
-    return _fig_to_bytes(fig, dpi=150)
+    return _fig_to_bytes(fig, dpi=180)
