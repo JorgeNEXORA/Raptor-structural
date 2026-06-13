@@ -15,6 +15,16 @@ import matplotlib.patches as patches
 from matplotlib.gridspec import GridSpec
 from core.model import Project, SlabType
 
+# Guard for older model versions that may not have CANTILEVER
+_ST_RIBBED     = SlabType.RIBBED
+_ST_ONE_WAY    = SlabType.ONE_WAY
+_ST_TWO_WAY    = SlabType.TWO_WAY
+_ST_CANTILEVER = getattr(SlabType, 'CANTILEVER', None)
+
+
+def _is_cantilever(slab_type) -> bool:
+    return _ST_CANTILEVER is not None and slab_type == _ST_CANTILEVER
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +86,7 @@ def _find_bays(project):
 
 def _assign_slabs_to_bays(project, bays):
     """Match non-cantilever slabs to bays by closest span length."""
-    non_cant = [s for s in project.slabs if s.slab_type != SlabType.CANTILEVER]
+    non_cant = [s for s in project.slabs if not _is_cantilever(s.slab_type)]
     sorted_slabs = sorted(non_cant, key=lambda s: s.span_m)
     sorted_bays = sorted(bays, key=lambda b: min(b[2] - b[0], b[3] - b[1]))
     result = {}
@@ -97,14 +107,15 @@ def _draw_slab_bay(ax, x1, y1, x2, y2, slab):
     short_is_x = w <= h
     span_dir = 'x' if short_is_x else 'y'
 
-    slab_type = slab.slab_type if slab else SlabType.ONE_WAY
+    slab_type = slab.slab_type if slab else _ST_ONE_WAY
 
     color_map = {
-        SlabType.ONE_WAY:    '#ddeeff',
-        SlabType.TWO_WAY:    '#eeddff',
-        SlabType.RIBBED:     '#fff8e8',
-        SlabType.CANTILEVER: '#ffeedd',
+        _ST_ONE_WAY:  '#ddeeff',
+        _ST_TWO_WAY:  '#eeddff',
+        _ST_RIBBED:   '#fff8e8',
     }
+    if _ST_CANTILEVER:
+        color_map[_ST_CANTILEVER] = '#ffeedd'
     bg_color = color_map.get(slab_type, '#f0f0f0')
 
     # Background rectangle
@@ -113,17 +124,16 @@ def _draw_slab_bay(ax, x1, y1, x2, y2, slab):
         fill=True, facecolor=bg_color, edgecolor='#555555',
         linewidth=0.9, zorder=1))
 
-    if slab_type == SlabType.RIBBED:
+    if slab_type == _ST_RIBBED:
         _draw_vigota_lines(ax, x1, y1, x2, y2, span_dir)
         _draw_span_arrow(ax, x1, y1, x2, y2, span_dir)
 
-    elif slab_type == SlabType.TWO_WAY:
-        # Cross hatch for 2-way
+    elif slab_type == _ST_TWO_WAY:
         ax.add_patch(patches.Rectangle(
             (x1, y1), w, h, fill=False,
             hatch='xxx', edgecolor='#aaaaaa', linewidth=0, zorder=2, alpha=0.7))
 
-    elif slab_type == SlabType.ONE_WAY:
+    elif slab_type == _ST_ONE_WAY:
         ax.add_patch(patches.Rectangle(
             (x1, y1), w, h, fill=False,
             hatch='///', edgecolor='#aaaaaa', linewidth=0, zorder=2, alpha=0.7))
@@ -133,11 +143,13 @@ def _draw_slab_bay(ax, x1, y1, x2, y2, slab):
     cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
     if slab:
         stype_label = {
-            SlabType.ONE_WAY:    '1D',
-            SlabType.TWO_WAY:    '2D',
-            SlabType.RIBBED:     'Alig.',
-            SlabType.CANTILEVER: 'Cons.',
-        }.get(slab_type, '')
+            _ST_ONE_WAY: '1D',
+            _ST_TWO_WAY: '2D',
+            _ST_RIBBED:  'Alig.',
+        }
+        if _ST_CANTILEVER:
+            stype_label[_ST_CANTILEVER] = 'Cons.'
+        stype_label = stype_label.get(slab_type, '')
         ax.text(cx, cy + 0.12, slab.id,
                 ha='center', va='center', fontsize=7, fontweight='bold', zorder=6)
         cat = f' [{slab.catalog_id}]' if getattr(slab, 'catalog_id', None) else ''
@@ -272,11 +284,12 @@ def draw_slab_plan(project: Project, title: str = "PLANTA DA LAJE DE PISO") -> b
 
     # --- Draw slabs with polygon_points (if available) ---
     hatch_map = {
-        SlabType.ONE_WAY:    ('///', '#ddeeff'),
-        SlabType.TWO_WAY:    ('xxx', '#eeddff'),
-        SlabType.RIBBED:     ('',    '#fff8e8'),
-        SlabType.CANTILEVER: ('---', '#ffeedd'),
+        _ST_ONE_WAY:  ('///', '#ddeeff'),
+        _ST_TWO_WAY:  ('xxx', '#eeddff'),
+        _ST_RIBBED:   ('',    '#fff8e8'),
     }
+    if _ST_CANTILEVER:
+        hatch_map[_ST_CANTILEVER] = ('---', '#ffeedd')
     drawn_slab_ids = set()
     for slab in project.slabs:
         pts = slab.polygon_points
