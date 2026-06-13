@@ -151,6 +151,33 @@ with st.sidebar:
     st.caption("Análise estrutural EC2 — MVP")
     st.divider()
 
+    # ── Abrir / Guardar projecto ──────────────────────────────────────────────
+    st.markdown("### 📁 Projecto")
+    raptor_upload = st.file_uploader("Abrir projecto (.raptor)", type=["raptor", "json"],
+                                     key="raptor_upload")
+    if raptor_upload is not None:
+        try:
+            from core.persistence import load_project as _load_proj
+            _loaded = _load_proj(raptor_upload.read())
+            st.session_state.project = _loaded
+            st.session_state.drawings_ready = False
+            st.success(f"Projecto '{_loaded.name}' carregado.")
+        except Exception as _le:
+            st.error(f"Erro ao abrir projecto: {_le}")
+
+    if st.session_state.get("project"):
+        from core.persistence import save_project as _save_proj
+        _proj_bytes = _save_proj(st.session_state.project)
+        _safe_name  = st.session_state.project.name.replace(" ", "_").replace("/", "-")
+        st.download_button(
+            "💾  Guardar projecto",
+            data=_proj_bytes,
+            file_name=f"{_safe_name}.raptor",
+            mime="application/json",
+            use_container_width=True,
+        )
+    st.divider()
+
     mode = st.radio("Modo de entrada", ["CSV", "DXF"], horizontal=True)
 
     dxf_upload = col_csv = beam_csv = slab_csv = slab_loads_csv = None
