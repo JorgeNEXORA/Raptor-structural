@@ -140,6 +140,7 @@ class AutoPipeline:
             project.add_alert("info", f"Laje {s.id}: descarga distribuída por {txt}.")
 
         # ── Beam analysis ─────────────────────────────────────────────────────
+        from core.model import BeamType as _BT
         for b in project.beams:
             beam_analyzer.analyze(b)
             if b.result.shear_utilization > 0.75:
@@ -154,6 +155,15 @@ class AutoPipeline:
             if b.result.bending_utilization > 1.0:
                 project.add_alert("warning",
                     f"Viga {b.id}: flexão excede MRd ({b.result.bending_utilization:.2f}).")
+            # Caixa de estore height constraint check
+            mh = getattr(b, 'max_height_cm', 0.0)
+            if mh > 0 and b.height_cm > mh:
+                project.add_alert("warning",
+                    f"Viga {b.id}: altura {b.height_cm:.0f}cm excede máximo para caixa de estore ({mh:.0f}cm).")
+            # VCT beams: minimum tie force per EC2 §9.10.2.2
+            if getattr(b, 'beam_type', _BT.FRAME) == _BT.VCT:
+                project.add_alert("info",
+                    f"Viga de travação {b.id}: verificar força de ligação horizontal (EC2 §9.10.2).")
 
         # ── Continuous beam analysis ──────────────────────────────────────────
         cont = ContinuousPipeline(project.columns, project.beams).run()
@@ -210,16 +220,18 @@ class AutoPipeline:
                     f"Pilar {c.id}: utilização elevada ({c.result.utilization:.2f}).")
 
         # ── Foundation design ─────────────────────────────────────────────────
-        project.footings = [
-            Footing(f"S_{c.id}", c.id, FootingType.CONCENTRIC, 100.0, 100.0, 40.0, 37.0)
-            for c in project.columns
-        ]
-        if len(project.footings) >= 2:
-            project.footings[1].footing_type = FootingType.ECCENTRIC
-            project.footings[1].eccentricity_x_cm = 12.0
-        if len(project.footings) >= 5:
-            project.footings[4].footing_type = FootingType.ECCENTRIC
-            project.footings[4].eccentricity_y_cm = 12.0
+        # Build a map of existing footings (preserves user-set footing types)
+        _existing_ftg = {f.related_column_id: f for f in project.footings}
+        new_footings = []
+        for c in project.columns:
+            if c.id in _existing_ftg:
+                # Reuse existing footing (preserves type/orientation/size set by user)
+                new_footings.append(_existing_ftg[c.id])
+            else:
+                new_footings.append(
+                    Footing(f"S_{c.id}", c.id, FootingType.CONCENTRIC, 100.0, 100.0, 40.0, 37.0)
+                )
+        project.footings = new_footings
 
         fnd          = FoundationAnalyzer(project.soil_allowable_mpa, fck_mpa=fck, fyk_mpa=fyk)
         footing_lookup = {}
