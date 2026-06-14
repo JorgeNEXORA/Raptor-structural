@@ -157,37 +157,63 @@ with st.sidebar:
     st.divider()
 
     # ── Guardar / Abrir projecto ──────────────────────────────────────────────
+    from core.persistence import save_inputs as _save_inp, load_inputs as _load_inp
     _proj_now = st.session_state.get("project")
+
+    # Guardar inputs (sempre visível — não precisa de cálculo)
+    _inp_keys = ["manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
+                 "manual_stairs", "col_config", "cols_in_cont_footing", "portico_slab_map"]
+    _inp_snap = {k: st.session_state.get(k) for k in _inp_keys}
+    _inp_bytes = _save_inp(_inp_snap)
+    st.download_button(
+        "💾  Guardar inputs",
+        data=_inp_bytes,
+        file_name="inputs.raptor",
+        mime="application/json",
+        use_container_width=True,
+        help="Guarda lajes, muros, pilares e pórticos introduzidos, mesmo sem correr o cálculo.",
+    )
+
+    # Guardar projeto completo (com resultados) — só depois de calcular
     if _proj_now:
         st.success(f"**{_proj_now.name}**", icon="📂")
         from core.persistence import save_project as _save_proj
         _proj_bytes = _save_proj(_proj_now)
         _safe_name  = _proj_now.name.replace(" ", "_").replace("/", "-")
         st.download_button(
-            "💾  Guardar projeto (.raptor)",
+            "💾  Guardar projeto + resultados (.raptor)",
             data=_proj_bytes,
             file_name=f"{_safe_name}.raptor",
             mime="application/json",
             use_container_width=True,
-            help="Guarda o estado atual (geometria, resultados e edições) para continuar mais tarde.",
+            help="Guarda geometria, resultados e armaduras calculadas.",
         )
-    else:
-        st.info("Sem projeto aberto.", icon="📂")
 
-    with st.expander("📂 Abrir projeto guardado (.raptor)"):
-        st.caption("Carrega um ficheiro .raptor guardado anteriormente para continuar a trabalhar.")
+    with st.expander("📂 Abrir projeto / inputs guardado"):
+        st.caption("Carrega um ficheiro .raptor (inputs ou projeto completo).")
         raptor_upload = st.file_uploader("Ficheiro .raptor", type=["raptor", "json"],
                                          key="raptor_upload", label_visibility="collapsed")
         if raptor_upload is not None:
             try:
-                from core.persistence import load_project as _load_proj
-                _loaded = _load_proj(raptor_upload.read())
-                st.session_state.project = _loaded
-                st.session_state.drawings_ready = False
-                st.success(f"Projeto '{_loaded.name}' carregado com sucesso.")
-                st.rerun()
+                _raw_bytes = raptor_upload.read()
+                _raw_json  = __import__("json").loads(_raw_bytes.decode("utf-8"))
+                if _raw_json.get("raptor_version", "").startswith("inputs_"):
+                    # Inputs snapshot
+                    _inp_loaded = _load_inp(_raw_bytes)
+                    for _ik, _iv in _inp_loaded.items():
+                        st.session_state[_ik] = _iv
+                    st.success("Inputs restaurados com sucesso.")
+                    st.rerun()
+                else:
+                    # Full project
+                    from core.persistence import load_project as _load_proj
+                    _loaded = _load_proj(_raw_bytes)
+                    st.session_state.project = _loaded
+                    st.session_state.drawings_ready = False
+                    st.success(f"Projeto '{_loaded.name}' carregado com sucesso.")
+                    st.rerun()
             except Exception as _le:
-                st.error(f"Erro ao abrir projeto: {_le}")
+                st.error(f"Erro ao abrir ficheiro: {_le}")
     st.divider()
 
     mode = st.radio("Modo de entrada", ["CSV", "DXF"], horizontal=True)

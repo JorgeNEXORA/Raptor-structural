@@ -167,6 +167,8 @@ def _rw_from_dict(d: dict) -> RetainingWall:
         gamma_soil_kn_m3=d.get("gamma_soil_kn_m3", 18.0),
         phi_deg=d.get("phi_deg", 30.0),
         surcharge_kn_m2=d.get("surcharge_kn_m2", 5.0),
+        wall_type=d.get("wall_type", "terras"),
+        load_side=d.get("load_side", "direito"),
         x=d.get("x", 0.0), y=d.get("y", 0.0),
     )
     if d.get("result"):
@@ -176,6 +178,43 @@ def _rw_from_dict(d: dict) -> RetainingWall:
         except Exception:
             pass
     return rw
+
+
+# ── Inputs snapshot (sem cálculo) ─────────────────────────────────────────────
+
+def save_inputs(ss: dict) -> bytes:
+    """Serialise manual session_state inputs to JSON (no calculation required)."""
+    from core.model import FlatSlab, StairSlab  # avoid circular at top level
+    payload = {
+        "raptor_version": "inputs_1.0",
+        "manual_slabs":           [dataclasses.asdict(s) for s in ss.get("manual_slabs", [])],
+        "manual_retaining_walls": [dataclasses.asdict(w) for w in ss.get("manual_retaining_walls", [])],
+        "manual_flat_slabs":      [dataclasses.asdict(f) for f in ss.get("manual_flat_slabs", [])],
+        "manual_stairs":          [dataclasses.asdict(s) for s in ss.get("manual_stairs", [])],
+        "col_config":             ss.get("col_config"),
+        "cols_in_cont_footing":   ss.get("cols_in_cont_footing", []),
+        "portico_slab_map":       ss.get("portico_slab_map", {}),
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2, cls=_Enc).encode("utf-8")
+
+
+def load_inputs(data: bytes) -> dict:
+    """Restore session_state inputs from a saved inputs snapshot."""
+    from core.model import FlatSlab, StairSlab
+    raw = json.loads(data.decode("utf-8"))
+    result: dict = {}
+    result["manual_slabs"]           = [_slab_from_dict(d) for d in raw.get("manual_slabs", [])]
+    result["manual_retaining_walls"] = [_rw_from_dict(d)   for d in raw.get("manual_retaining_walls", [])]
+    result["manual_flat_slabs"]      = [FlatSlab(**{k: v for k, v in d.items()
+                                                    if k in {f.name for f in dataclasses.fields(FlatSlab)}})
+                                        for d in raw.get("manual_flat_slabs", [])]
+    result["manual_stairs"]          = [StairSlab(**{k: v for k, v in d.items()
+                                                     if k in {f.name for f in dataclasses.fields(StairSlab)}})
+                                        for d in raw.get("manual_stairs", [])]
+    result["col_config"]             = raw.get("col_config")
+    result["cols_in_cont_footing"]   = raw.get("cols_in_cont_footing", [])
+    result["portico_slab_map"]       = raw.get("portico_slab_map", {})
+    return result
 
 
 def _cf_from_dict(d: dict) -> ContinuousFooting:
