@@ -1116,15 +1116,21 @@ if run_btn:
             project.qk_floor_kn_m2 = lcfg.get("qk_piso", 2.0)
             project.gk_roof_kn_m2  = lcfg.get("gk_cob",  5.5)
             project.qk_roof_kn_m2  = lcfg.get("qk_cob",  1.0)
-            # Apply user beam section overrides (e.g. vigas planas with h = slab thickness)
-            _bov_run = st.session_state.get("beam_overrides", {})
-            for _b in project.beams:
-                _ov = _bov_run.get(_b.id, {})
-                if _ov.get("width_cm"):
-                    _b.width_cm = float(_ov["width_cm"])
-                if _ov.get("height_cm"):
-                    _b.height_cm = float(_ov["height_cm"])
-                    _b.effective_depth_cm = float(_ov["height_cm"]) - 5.0
+            # Apply tramo section overrides (match beam by pilar pair)
+            for _tr_ov in st.session_state.get("portico_tramos", []):
+                _tb = float(_tr_ov.get("secao_b_cm") or 0)
+                _th = float(_tr_ov.get("secao_h_cm") or 0)
+                if not (_tb and _th):
+                    continue
+                _pe = (_tr_ov.get("pilar_esq") or "").strip()
+                _pd_ov = (_tr_ov.get("pilar_dir") or "").strip()
+                for _b in project.beams:
+                    _sn = (_b.start_node or "").strip()
+                    _en = (_b.end_node   or "").strip()
+                    if (_sn == _pe and _en == _pd_ov) or (_sn == _pd_ov and _en == _pe):
+                        _b.width_cm = _tb
+                        _b.height_cm = _th
+                        _b.effective_depth_cm = _th - 5.0
             AutoPipeline().run(project, slab_loads=slab_loads)
             ProjectAdvisor().project_score(project)
             ProjectAdvisor().generate_advice(project)
@@ -1146,14 +1152,20 @@ if opt_btn and st.session_state.project:
                 st.info("Não foram necessárias alterações automáticas.")
             else:
                 reset_project_results(p)
-                _bov_opt = st.session_state.get("beam_overrides", {})
-                for _b in p.beams:
-                    _ov = _bov_opt.get(_b.id, {})
-                    if _ov.get("width_cm"):
-                        _b.width_cm = float(_ov["width_cm"])
-                    if _ov.get("height_cm"):
-                        _b.height_cm = float(_ov["height_cm"])
-                        _b.effective_depth_cm = float(_ov["height_cm"]) - 5.0
+                for _tr_ov in st.session_state.get("portico_tramos", []):
+                    _tb = float(_tr_ov.get("secao_b_cm") or 0)
+                    _th = float(_tr_ov.get("secao_h_cm") or 0)
+                    if not (_tb and _th):
+                        continue
+                    _pe = (_tr_ov.get("pilar_esq") or "").strip()
+                    _pd_ov = (_tr_ov.get("pilar_dir") or "").strip()
+                    for _b in p.beams:
+                        _sn = (_b.start_node or "").strip()
+                        _en = (_b.end_node   or "").strip()
+                        if (_sn == _pe and _en == _pd_ov) or (_sn == _pd_ov and _en == _pe):
+                            _b.width_cm = _tb
+                            _b.height_cm = _th
+                            _b.effective_depth_cm = _th - 5.0
                 AutoPipeline().run(p)
                 ProjectAdvisor().project_score(p)
                 ProjectAdvisor().generate_advice(p)
@@ -1388,30 +1400,6 @@ with tab_porticos:
         st.session_state["_trigger_recalc"] = True
         st.rerun()
 
-    # Global beam section editor — always visible after calculation
-    if p.beams:
-        _bov_pg = st.session_state.get("beam_overrides", {})
-        with st.expander(f"✏️ Editar secção das vigas (b×h) — {len(p.beams)} viga(s)"):
-            st.caption("Altera b e h de qualquer viga. Clica **▶ Recalcular** para aplicar.")
-            _hc0, _hc1, _hc2 = st.columns([0.40, 0.30, 0.30])
-            _hc0.markdown("**Viga**"); _hc1.markdown("**b (cm)**"); _hc2.markdown("**h (cm)**")
-            for _pgb in p.beams:
-                _pgov = _bov_pg.get(_pgb.id, {})
-                _pgb_b = float(_pgov.get("width_cm",  _pgb.width_cm))
-                _pgb_h = float(_pgov.get("height_cm", _pgb.height_cm))
-                _pgc0, _pgc1, _pgc2 = st.columns([0.40, 0.30, 0.30])
-                _pgc0.markdown(f"**{_pgb.id}** — atual {int(_pgb.width_cm)}×{int(_pgb.height_cm)} cm")
-                _new_pgb = _pgc1.number_input(
-                    "b", value=_pgb_b, min_value=10.0, max_value=150.0, step=5.0,
-                    key=f"pg_b_{_pgb.id}", label_visibility="collapsed"
-                )
-                _new_pgh = _pgc2.number_input(
-                    "h", value=_pgb_h, min_value=10.0, max_value=200.0, step=5.0,
-                    key=f"pg_h_{_pgb.id}", label_visibility="collapsed"
-                )
-                _bov_pg[_pgb.id] = {"width_cm": _new_pgb, "height_cm": _new_pgh}
-            st.session_state.beam_overrides = _bov_pg
-
     if not _pt_groups:
         st.info("Ainda não tens pórticos definidos.  "
                 "Usa o expander **🏗️ Pórticos** na barra lateral para os criar.")
@@ -1425,17 +1413,41 @@ with tab_porticos:
             for _tr in sorted(_tramos, key=lambda x: x["tramo"]):
                 _cc_txt = (f"{_tr.get('carga_concentrada_kn', 0):.0f} kN"
                            if _tr.get("carga_concentrada_kn", 0) else "—")
+                _sb = _tr.get("secao_b_cm"); _sh = _tr.get("secao_h_cm")
+                _sec_txt = f"{int(_sb)}×{int(_sh)}" if (_sb and _sh) else "—"
                 _tr_rows.append({
                     "Tramo": _tr["tramo"],
                     "P. esq.": _tr.get("pilar_esq", "—") or "—",
                     "P. dir.": _tr.get("pilar_dir", "—") or "—",
                     "Dist. (m)": round(_tr.get("span_m", 0), 2),
-                    "Alt. (m)":  round(_tr.get("altura_m", 0), 2) if _tr.get("altura_m") else "—",
+                    "b×h (cm)": _sec_txt,
                     "Laje esq.": _tr.get("laje_esq_piso", "") or _tr.get("laje_esq_cob", "") or "—",
                     "Laje dir.": _tr.get("laje_dir_piso", "") or _tr.get("laje_dir_cob", "") or "—",
                     "Carga conc.": _cc_txt,
                 })
             st.dataframe(pd.DataFrame(_tr_rows), use_container_width=True, hide_index=True)
+
+            # Per-tramo section editor
+            with st.expander(f"✏️ Secção das vigas (b×h) — {_pid}"):
+                st.caption("Define b×h por tramo. Clica **▶ Recalcular** para aplicar.")
+                _ts_hdr0, _ts_hdr1, _ts_hdr2 = st.columns([0.45, 0.27, 0.28])
+                _ts_hdr0.markdown("**Tramo**"); _ts_hdr1.markdown("**b (cm)**"); _ts_hdr2.markdown("**h (cm)**")
+                for _tr in sorted(_tramos, key=lambda x: x["tramo"]):
+                    _cur_sb = float(_tr.get("secao_b_cm") or 25.0)
+                    _cur_sh = float(_tr.get("secao_h_cm") or 40.0)
+                    _ts_c0, _ts_c1, _ts_c2 = st.columns([0.45, 0.27, 0.28])
+                    _ts_c0.markdown(f"**T{_tr['tramo']}** {_tr.get('pilar_esq','?')} → {_tr.get('pilar_dir','?')}")
+                    _new_sb = _ts_c1.number_input(
+                        "b", value=_cur_sb, min_value=10.0, max_value=150.0, step=5.0,
+                        key=f"ts_b_{_pid}_{_tr['tramo']}", label_visibility="collapsed"
+                    )
+                    _new_sh = _ts_c2.number_input(
+                        "h", value=_cur_sh, min_value=10.0, max_value=200.0, step=5.0,
+                        key=f"ts_h_{_pid}_{_tr['tramo']}", label_visibility="collapsed"
+                    )
+                    _tr["secao_b_cm"] = _new_sb
+                    _tr["secao_h_cm"] = _new_sh
+                st.session_state.portico_tramos = _pt_tramos_all
 
             # Seed portico_slab_map from tramos if not yet set
             if _pid not in _psmap:
