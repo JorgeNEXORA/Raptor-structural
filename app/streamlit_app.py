@@ -922,7 +922,7 @@ with tab_pilares:
 with tab_lajes:
     # Presdouro catalog selector
     if _CATALOG_OK:
-        with st.expander(f"📖 Catálogo Presdouro ({len(CATALOG)} tipos disponíveis)"):
+        with st.expander(f"📖 Catálogo ({len(CATALOG)} lajes — PAVINORTE + Presdouro)"):
             st.caption("Seleciona a laje para cada painel ou deixa o programa escolher automaticamente.")
             cc1, cc2, cc3 = st.columns(3)
             cat_span = cc1.number_input("Vão (m)", value=4.0, min_value=1.0, step=0.5, key="cat_span")
@@ -946,20 +946,77 @@ with tab_lajes:
                     st.warning("Nenhuma laje do catálogo satisfaz estes requisitos.")
         st.divider()
 
+    # Per-slab editor: level, load zone and catalog assignment
+    _pavinorte_names = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))]
+    _other_names     = [n for n in sorted(CATALOG.keys()) if not n.startswith(("V3-","V5-","2V"))]
+    _cat_options = ["(automático)"] + _pavinorte_names + _other_names if _CATALOG_OK else ["(automático)"]
+    _lcfg = st.session_state.get("load_cfg", {})
+    _zona_loads = {
+        "Habitável": (_lcfg.get("gk_piso", 6.15), _lcfg.get("qk_piso", 2.0)),
+        "Garagem":   (_lcfg.get("gk_gar",  4.80), _lcfg.get("qk_gar",  2.5)),
+        "Varanda":   (_lcfg.get("gk_var",  5.50), _lcfg.get("qk_var",  3.0)),
+        "Cobertura": (_lcfg.get("gk_cob",  5.50), _lcfg.get("qk_cob",  1.0)),
+    }
+    with st.expander("✏️ Editar nível, zona de carga e catálogo por laje"):
+        st.caption("Zona de carga: Habitável = piso normal, Garagem = LP7, Cobertura = laje de cobertura.")
+        for _si, _sl in enumerate(p.slabs):
+            _lc1, _lc2, _lc3, _lc4 = st.columns([1, 1, 2, 1])
+            _cur_lv = getattr(_sl, 'level', 'piso')
+            _new_lv = _lc1.selectbox(
+                f"{_sl.id} — nível", options=["piso", "cobertura"],
+                index=0 if _cur_lv == 'piso' else 1,
+                key=f"slab_level_{_sl.id}",
+            )
+            # Infer current zona from gk/qk
+            _cur_zona_key = "slab_zona_" + _sl.id
+            if _cur_zona_key not in st.session_state:
+                _gk_now, _qk_now = _sl.gk_kn_m2, _sl.qk_kn_m2
+                _best_zona = "Habitável"
+                _best_diff = 9999.0
+                for _zn, (_zg, _zq) in _zona_loads.items():
+                    _diff = abs(_zg - _gk_now) + abs(_zq - _qk_now)
+                    if _diff < _best_diff:
+                        _best_diff = _diff
+                        _best_zona = _zn
+                st.session_state[_cur_zona_key] = _best_zona
+            _zona_list = list(_zona_loads.keys())
+            _new_zona = _lc2.selectbox(
+                f"{_sl.id} — zona", options=_zona_list,
+                index=_zona_list.index(st.session_state[_cur_zona_key]),
+                key=_cur_zona_key,
+            )
+            _cur_cat = getattr(_sl, 'catalog_id', None) or "(automático)"
+            _cat_idx = _cat_options.index(_cur_cat) if _cur_cat in _cat_options else 0
+            _new_cat = _lc3.selectbox(
+                f"{_sl.id} — catálogo", options=_cat_options,
+                index=_cat_idx, key=f"slab_cat_{_sl.id}",
+            )
+            _lc4.caption(f"gk={_sl.gk_kn_m2:.2f}\nqk={_sl.qk_kn_m2:.2f}")
+            if _new_lv != _cur_lv:
+                _sl.level = _new_lv
+            _sl.catalog_id = None if _new_cat == "(automático)" else _new_cat
+            # Apply zone loads
+            _zg, _zq = _zona_loads[_new_zona]
+            _sl.gk_kn_m2 = _zg
+            _sl.qk_kn_m2 = _zq
+
+    _stype_map = {"one_way": "Vig.1D", "ribbed": "Alig.", "two_way": "Maç.2D", "cantilever": "Cons."}
     rows = []
     for s in p.slabs:
         r = s.result
+        sv = s.slab_type.value if s.slab_type else "one_way"
+        h_str = (f"{int(s.thickness_cm-5)}+5" if sv in ("ribbed","one_way") and s.thickness_cm > 5
+                 else f"{s.thickness_cm:.0f}")
         rows.append({
             "ID": s.id,
-            "Local.": getattr(s, 'level', 'piso').capitalize(),
+            "Nível": getattr(s, 'level', 'piso').capitalize(),
+            "Tipo": _stype_map.get(sv, sv),
+            "Catálogo": s.catalog_id or "(auto)",
             "Span (m)": round(s.span_m, 2),
-            "h (cm)": round(s.thickness_cm, 1),
-            "Tipo": s.slab_type.value if s.slab_type else "-",
-            "Dir": s.direction or "-",
-            "Gk (kN/m²)": round(s.gk_kn_m2, 2),
-            "Qk (kN/m²)": round(s.qk_kn_m2, 2),
+            "h1+h2": h_str,
+            "Gk": round(s.gk_kn_m2, 2),
+            "Qk": round(s.qk_kn_m2, 2),
             "Msd (kNm/m)": round(r.msd_knm_m, 2) if r else "-",
-            "Catálogo": s.catalog_id or "-",
             "U. Flecha": round(r.deflection_utilization, 2) if r else "-",
             "U. Fissura": round(r.crack_utilization, 2) if r else "-",
         })
@@ -971,12 +1028,32 @@ with tab_lajes:
 
 # ── Sapatas ───────────────────────────────────────────────────────────────────
 with tab_sapatas:
+    # Editor: toggle footing type (concentric ↔ eccentric)
+    _ftg_needs_ecc = [f for f in p.footings if f.result and f.result.needs_balance_beam]
+    with st.expander(f"✏️ Editar orientação das sapatas — {len(_ftg_needs_ecc)} sapata(s) com viga de equilíbrio"):
+        st.caption("Sapatas excêntricas são usadas em bordas de lote onde não é possível centrar a sapata no pilar.")
+        from core.model import FootingType
+        _ftg_cols = st.columns(min(4, max(1, len(p.footings))))
+        for _fi, _ftg in enumerate(p.footings):
+            _fc = _ftg_cols[_fi % len(_ftg_cols)]
+            _cur_ft = getattr(_ftg, 'footing_type', FootingType.CONCENTRIC)
+            _cur_label = "Excêntrica" if _cur_ft == FootingType.ECCENTRIC else "Concêntrica"
+            _new_label = _fc.selectbox(
+                _ftg.id, options=["Concêntrica", "Excêntrica"],
+                index=1 if _cur_ft == FootingType.ECCENTRIC else 0,
+                key=f"ftype_{_ftg.id}",
+            )
+            _new_ft = FootingType.ECCENTRIC if _new_label == "Excêntrica" else FootingType.CONCENTRIC
+            if _new_ft != _cur_ft:
+                _ftg.footing_type = _new_ft
+
     rows = []
     for f in p.footings:
         r = f.result
         rows.append({
             "ID": f.id,
-            "Tipo": f.footing_type.value,
+            "Tipo": "Excêntrica" if f.footing_type == FootingType.ECCENTRIC else "Concêntrica",
+            "Dim. (cm)": f"{int(f.width_a_cm)}×{int(f.width_b_cm)}×{int(f.height_cm)}",
             "Nsd (kN)": round(r.nsd_kn, 2),
             "σmin (MPa)": round(r.sigma_min_mpa, 3),
             "σmax (MPa)": round(r.sigma_max_mpa, 3),

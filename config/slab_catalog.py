@@ -73,9 +73,25 @@ def _default_xml_path() -> str:
     )
 
 
+# ── PAVINORTE catalog (hardcoded from manufacturer technical tables) ──────────
+# Format: V{class}-C 40x24-{total_height}  (vigota 40cm spacing, 24cm block, +5cm capping)
+# pesom2 = self-weight kN/m², MRd kNm/m, VRd kN/m, EI kN·m²/m
+_PAVINORTE: dict = {e.nome: e for e in [
+    SlabCatalogEntry("V3-C 40x24-25", 25.0, 5.0, 3.65, 16.5, 37.0, 1800.0, "V3-C", "40x24"),
+    SlabCatalogEntry("V3-C 40x24-30", 30.0, 5.0, 4.00, 23.0, 42.0, 2800.0, "V3-C", "40x24"),
+    SlabCatalogEntry("V5-C 40x24-25", 25.0, 5.0, 4.05, 20.0, 43.0, 2100.0, "V5-C", "40x24"),
+    SlabCatalogEntry("V5-C 40x24-30", 30.0, 5.0, 4.40, 28.5, 50.0, 3200.0, "V5-C", "40x24"),
+    SlabCatalogEntry("2V5-C 40x24-30", 30.0, 5.0, 5.20, 52.0, 80.0, 5800.0, "2V5-C", "40x24"),
+    SlabCatalogEntry("2V6-C 40x24-30", 30.0, 5.0, 5.65, 65.0, 95.0, 7200.0, "2V6-C", "40x24"),
+    SlabCatalogEntry("V3-C 40x24-20", 20.0, 5.0, 3.30, 12.0, 32.0, 1300.0, "V3-C", "40x24"),
+    SlabCatalogEntry("V5-C 40x24-20", 20.0, 5.0, 3.70, 15.0, 38.0, 1550.0, "V5-C", "40x24"),
+]}
+
+
 # ── Module-level catalog (loaded once on import) ─────────────────────────────
 _XML_PATH = _default_xml_path()
-CATALOG: dict = load_catalog(_XML_PATH) if os.path.exists(_XML_PATH) else {}
+_presdouro: dict = load_catalog(_XML_PATH) if os.path.exists(_XML_PATH) else {}
+CATALOG: dict = {**_PAVINORTE, **_presdouro}  # PAVINORTE first, Presdouro appended
 
 
 # ── Selector ──────────────────────────────────────────────────────────────────

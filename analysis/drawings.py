@@ -423,8 +423,10 @@ def draw_slab_plan(project: Project, title: str = "PLANTA DA LAJE DE PISO") -> b
         mx, my = (c1.x + c2.x) / 2, (c1.y + c2.y) / 2
         angle = math.degrees(math.atan2(dy, dx))
         rot = angle if abs(angle) < 60 else angle - 90
-        ax.text(mx, my, b.id, ha='center', va='center', fontsize=6,
-                rotation=rot, zorder=6,
+        pid = getattr(b, 'portico_id', '') or ''
+        beam_label = f"{pid}\n{b.id}" if pid else b.id
+        ax.text(mx, my, beam_label, ha='center', va='center', fontsize=5.5,
+                rotation=rot, zorder=6, linespacing=1.2,
                 bbox=dict(boxstyle='round,pad=0.1', facecolor='white',
                           alpha=0.85, edgecolor='none'))
 
@@ -1629,7 +1631,9 @@ def draw_slab_plan_dxf(project: 'Project', title: str = 'PLANTA DA LAJE DE PISO'
         hatch.set_solid_fill()
         hatch.paths.add_polyline_path(pts, is_closed=True)
         mx, my = (c1.x+c2.x)/2, (c1.y+c2.y)/2
-        _dxf_text(msp, b.id, mx, my, TH_SM, 'TEXTO', 'CENTER', color=7)
+        pid = getattr(b, 'portico_id', '') or ''
+        blabel = f"{pid}\\P{b.id}" if pid else b.id  # ezdxf MTEXT newline
+        _dxf_text(msp, blabel, mx, my, TH_SM, 'TEXTO', 'CENTER', color=7)
 
     # Columns
     for col in project.columns:
@@ -1834,7 +1838,7 @@ def draw_footing_schedule_dxf(project: 'Project') -> bytes:
 # ── Quadro de Lajes ───────────────────────────────────────────────────────────
 
 def _slab_schedule_rows(slabs, project):
-    """Build rows list for the slab schedule table."""
+    """Build rows list for the slab schedule table (PAVINORTE format)."""
     _TYPE_PT = {
         "one_way": "Vigotada 1 dir.", "ribbed": "Aligeirada",
         "two_way": "Maciça 2 dir.", "cantilever": "Consola",
@@ -1857,12 +1861,20 @@ def _slab_schedule_rows(slabs, project):
             As = max(As, 0.0013 * 100 * s.effective_depth_cm)
             As_str = f"{As:.2f}"
         cat = s.catalog_id or "-"
+        # h notation: thickness_cm = h1 + 5cm capping for ribbed, else plain
+        sv = _slab_val(s.slab_type)
+        if sv in (_ST_RIBBED, _ST_ONE_WAY) and s.thickness_cm > 5:
+            h_str = f"{int(s.thickness_cm - 5)}+5"
+        else:
+            h_str = f"{s.thickness_cm:.0f}"
+        # Maciçamento: solid band at supports for ribbed/one_way
+        macic = "Apoios" if sv in (_ST_RIBBED, _ST_ONE_WAY) else "-"
         rows.append([
-            s.id, tp, (s.direction or "-").upper(),
-            f"{s.span_m:.2f}", f"{s.thickness_cm:.0f}", f"{s.effective_depth_cm:.0f}",
+            s.id, tp, (s.direction or "-").upper(), cat,
+            f"{s.span_m:.2f}", h_str, f"{s.effective_depth_cm:.0f}",
             f"{s.gk_kn_m2:.2f}", f"{s.qk_kn_m2:.2f}",
             f"{r.msd_knm_m:.2f}" if r else "-",
-            As_str, cat,
+            As_str, macic,
             f"{getattr(r,'deflection_utilization',0):.2f}" if r else "-",
             f"{getattr(r,'crack_utilization',0):.2f}" if r else "-",
         ])
@@ -1872,8 +1884,8 @@ def _slab_schedule_rows(slabs, project):
 def _draw_slab_table(ax, rows, headers, hdr_color='#2c3e50', col_widths=None):
     """Render a slab schedule table on the given Axes."""
     if col_widths is None:
-        col_widths = [0.05, 0.13, 0.04, 0.07, 0.05, 0.05,
-                      0.07, 0.07, 0.08, 0.09, 0.09, 0.09, 0.09]
+        col_widths = [0.05, 0.12, 0.04, 0.10, 0.06, 0.06, 0.05,
+                      0.07, 0.07, 0.07, 0.08, 0.07, 0.08, 0.08]
     ax.axis('off')
     if not rows:
         ax.text(0.5, 0.5, 'Sem lajes', ha='center', va='center', transform=ax.transAxes)
@@ -1881,15 +1893,17 @@ def _draw_slab_table(ax, rows, headers, hdr_color='#2c3e50', col_widths=None):
     tbl = ax.table(cellText=rows, colLabels=headers,
                    cellLoc='center', loc='center', colWidths=col_widths)
     tbl.auto_set_font_size(False)
-    tbl.set_fontsize(8)
+    tbl.set_fontsize(7.5)
     tbl.scale(1, 1.45)
     for j in range(len(headers)):
         tbl[0, j].set_facecolor(hdr_color)
         tbl[0, j].set_text_props(color='white', fontweight='bold')
+    n_util_cols = 2  # last 2 columns are utilization
+    n_cols = len(headers)
     for i, row in enumerate(rows):
-        for j in range(len(headers)):
+        for j in range(n_cols):
             tbl[i+1, j].set_facecolor('#f8f9fa' if i % 2 == 0 else 'white')
-        for jj in [11, 12]:
+        for jj in range(n_cols - n_util_cols, n_cols):
             try:
                 v = float(row[jj])
                 c = '#c0392b' if v >= 1.0 else ('#e67e22' if v >= 0.80 else '#27ae60')
@@ -1908,9 +1922,9 @@ def draw_slab_schedule(project: Project) -> bytes:
         buf = io.BytesIO(); fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
         plt.close(fig); return buf.getvalue()
 
-    headers = ["ID", "Tipo", "Dir.", "Vão (m)", "h (cm)", "d (cm)",
-               "gk (kN/m²)", "qk (kN/m²)", "Msd (kNm/m)", "As (cm²/m)",
-               "Catálogo", "U.Flecha", "U.Fissura"]
+    headers = ["ID", "Tipo", "Dir.", "Catálogo/Vigota", "Vão (m)", "h1+h2",
+               "d (cm)", "gk (kN/m²)", "qk (kN/m²)", "Msd (kNm/m)",
+               "As (cm²/m)", "Maciçamento", "U.Flecha", "U.Fissura"]
 
     piso_slabs  = [s for s in slabs if getattr(s, 'level', 'piso') != 'cobertura']
     cob_slabs   = [s for s in slabs if getattr(s, 'level', 'piso') == 'cobertura']
