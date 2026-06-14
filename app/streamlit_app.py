@@ -1180,7 +1180,8 @@ if "predim_results" in st.session_state and st.session_state["predim_results"]:
         })
     df_pd = pd.DataFrame(pd_rows)
     st.dataframe(style_df(df_pd, ["Utilização"]), use_container_width=True, hide_index=True)
-    st.caption("💡 Estas dimensões foram aplicadas aos pilares. Clica **▶ Correr cálculo** para verificar a estrutura completa.")
+    if st.session_state.project is None:
+        st.caption("💡 Estas dimensões foram aplicadas aos pilares. Clica **▶ Correr cálculo** para verificar a estrutura completa.")
     st.divider()
 
 if st.session_state.project is None:

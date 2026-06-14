@@ -1,3 +1,4 @@
+import math as _math
 from core.generators import ModelGenerator
 from core.model import ColumnLoad, ContinuousFooting, Footing, FootingType, LineLoad, Project
 from analysis.slabs import SlabAnalyzer
@@ -223,13 +224,22 @@ class AutoPipeline:
         # Build a map of existing footings (preserves user-set footing types)
         _existing_ftg = {f.related_column_id: f for f in project.footings}
         new_footings = []
+        _soil_kpa = max(project.soil_allowable_mpa * 1000.0, 50.0)  # kPa
         for c in project.columns:
             if c.id in _existing_ftg:
                 # Reuse existing footing (preserves type/orientation/size set by user)
                 new_footings.append(_existing_ftg[c.id])
             else:
+                # Auto-size footing so soil utilization ≈ 0.85–0.90
+                _nsd = c.result.nsd_kn if (c.result and c.result.nsd_kn > 0) else 300.0
+                _req_m2 = _nsd / (_soil_kpa * 0.88)   # target ~88% utilisation
+                _side_m  = max(0.80, _math.ceil(_math.sqrt(_req_m2) * 10) / 10)
+                _side_cm = int(_side_m * 100)
+                _h_cm    = max(40, int(round(_side_cm * 0.35 / 5) * 5))
+                _eff_cm  = _h_cm - 5
                 new_footings.append(
-                    Footing(f"S_{c.id}", c.id, FootingType.CONCENTRIC, 100.0, 100.0, 40.0, 37.0)
+                    Footing(f"S_{c.id}", c.id, FootingType.CONCENTRIC,
+                            float(_side_cm), float(_side_cm), float(_h_cm), float(_eff_cm))
                 )
         project.footings = new_footings
 
