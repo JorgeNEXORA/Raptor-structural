@@ -196,6 +196,7 @@ def save_inputs(ss: dict) -> bytes:
         "col_config":             ss.get("col_config"),
         "cols_in_cont_footing":   ss.get("cols_in_cont_footing", []),
         "portico_slab_map":       ss.get("portico_slab_map", {}),
+        "portico_tramos":         ss.get("portico_tramos", []),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2, cls=_Enc).encode("utf-8")
 
@@ -216,6 +217,7 @@ def load_inputs(data: bytes) -> dict:
     result["col_config"]             = raw.get("col_config")
     result["cols_in_cont_footing"]   = raw.get("cols_in_cont_footing", [])
     result["portico_slab_map"]       = raw.get("portico_slab_map", {})
+    result["portico_tramos"]         = raw.get("portico_tramos", [])
     return result
 
 

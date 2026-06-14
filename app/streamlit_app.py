@@ -59,6 +59,7 @@ for _key, _val in [
     ("manual_retaining_walls", []),
     ("manual_slabs", []),
     ("portico_slab_map", {}),
+    ("portico_tramos", []),
     ("col_config", None),
     ("cols_in_cont_footing", []),
     ("load_cfg", None),
@@ -150,6 +151,19 @@ def run_outputs(project: Project):
     st.session_state.docx_bytes = None  # reset on new run
 
 
+def _rebuild_psmap(pt_list: list, ss) -> None:
+    """Reconstrói portico_slab_map a partir de portico_tramos."""
+    _m: dict = {}
+    for _t in pt_list:
+        _pid = _t["portico_id"]
+        _m.setdefault(_pid, [])
+        for _sid in [_t.get("laje_esq_piso"), _t.get("laje_dir_piso"),
+                     _t.get("laje_esq_cob"), _t.get("laje_dir_cob")]:
+            if _sid and _sid not in _m[_pid]:
+                _m[_pid].append(_sid)
+    ss.portico_slab_map = _m
+
+
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🏗️ Raptor")
@@ -162,7 +176,8 @@ with st.sidebar:
 
     # Guardar inputs (sempre visível — não precisa de cálculo)
     _inp_keys = ["manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
-                 "manual_stairs", "col_config", "cols_in_cont_footing", "portico_slab_map"]
+                 "manual_stairs", "col_config", "cols_in_cont_footing",
+                 "portico_slab_map", "portico_tramos"]
     _inp_snap = {k: st.session_state.get(k) for k in _inp_keys}
     _inp_bytes = _save_inp(_inp_snap)
     st.download_button(
@@ -182,6 +197,7 @@ with st.sidebar:
             "col_config":           st.session_state.get("col_config"),
             "cols_in_cont_footing": st.session_state.get("cols_in_cont_footing", []),
             "portico_slab_map":     st.session_state.get("portico_slab_map", {}),
+            "portico_tramos":       st.session_state.get("portico_tramos", []),
         }
         _proj_bytes = _save_proj(_proj_now, session_state=_ss_to_save)
         _safe_name  = _proj_now.name.replace(" ", "_").replace("/", "-")
@@ -235,8 +251,11 @@ with st.sidebar:
                         if _ss_saved.get("portico_slab_map"):
                             st.session_state.portico_slab_map = _ss_saved["portico_slab_map"]
                         else:
-                            # Ficheiro antigo: limpar pórticos para o utilizador definir de novo
                             st.session_state.portico_slab_map = {}
+                        if _ss_saved.get("portico_tramos"):
+                            st.session_state.portico_tramos = _ss_saved["portico_tramos"]
+                        else:
+                            st.session_state.portico_tramos = []
                         st.session_state["_raptor_loaded_id"] = _up_uid
                         _n_rw = len(st.session_state.manual_retaining_walls)
                         _n_sl = len(st.session_state.manual_slabs)
@@ -588,39 +607,75 @@ with st.sidebar:
                     st.session_state.manual_slabs.pop(_i)
                     st.rerun()
 
-    # ── Pórticos → Lajes (sidebar, antes do cálculo) ─────────────────────────
-    _psmap_sb   = st.session_state.get("portico_slab_map", {})
-    _sb_piso_ids = [s.id for s in st.session_state.manual_slabs if getattr(s, 'level', 'piso') != 'cobertura']
-    _sb_cob_ids  = [s.id for s in st.session_state.manual_slabs if getattr(s, 'level', 'piso') == 'cobertura']
-    _n_atrib = sum(len(v) for v in _psmap_sb.values())
-    with st.expander(f"🏗️ Pórticos — lajes atribuídas ({_n_atrib})"):
-        st.caption("Define qual o ID do pórtico (igual ao campo 'portico_id' no CSV de vigas) "
-                   "e que lajes apoiam nele.")
-        if _psmap_sb and st.button("🗑 Limpar todos os pórticos", key="btn_clear_psmap"):
+    # ── Pórticos — definição por tramo ───────────────────────────────────────
+    _pt_list    = st.session_state.get("portico_tramos", [])
+    _cc_pt      = st.session_state.get("col_config") or {}
+    _n_pt_pil   = _cc_pt.get("n", 0)
+    _pil_opts_pt = ["—"] + [f"P{i}" for i in range(1, _n_pt_pil + 1)]
+    _pt_piso_ids = ["—"] + [s.id for s in st.session_state.manual_slabs
+                             if getattr(s, 'level', 'piso') != 'cobertura']
+    _pt_cob_ids  = ["—"] + [s.id for s in st.session_state.manual_slabs
+                             if getattr(s, 'level', 'piso') == 'cobertura']
+    _n_pt_tramos = len(_pt_list)
+
+    with st.expander(f"🏗️ Pórticos ({_n_pt_tramos} tramos definidos)"):
+        st.caption("Para cada tramo define os pilares de apoio, a distância e as lajes de cada lado.")
+
+        if _pt_list and st.button("🗑 Limpar todos os tramos", key="btn_clear_pt"):
+            st.session_state.portico_tramos = []
             st.session_state.portico_slab_map = {}
             st.rerun()
-        # Mostrar atribuições existentes
-        for _pp_id in list(_psmap_sb.keys()):
-            _pp_cur = _psmap_sb[_pp_id]
-            _ppa, _ppb = st.columns([4, 1])
-            _ppa.markdown(f"**{_pp_id}** — {', '.join(_pp_cur) if _pp_cur else '(sem lajes)'}")
-            if _ppb.button("🗑", key=f"del_psmap_{_pp_id}"):
-                del _psmap_sb[_pp_id]
-                st.session_state.portico_slab_map = _psmap_sb
-                st.rerun()
+
+        # Mostrar tramos existentes agrupados por pórtico
+        _pt_by_pid: dict = {}
+        for _pt in _pt_list:
+            _pt_by_pid.setdefault(_pt["portico_id"], []).append(_pt)
+
+        for _ppid, _tramos in _pt_by_pid.items():
+            st.markdown(f"**{_ppid}** — {len(_tramos)} tramo(s)")
+            for _tr in _tramos:
+                _ta, _tb, _tc = st.columns([3, 4, 1])
+                _ta.caption(f"T{_tr['tramo']}: {_tr['pilar_esq']}→{_tr['pilar_dir']}  {_tr['span_m']}m")
+                _tb.caption(f"esq: {_tr.get('laje_esq_piso','—')} / {_tr.get('laje_esq_cob','—')}  "
+                            f"dir: {_tr.get('laje_dir_piso','—')} / {_tr.get('laje_dir_cob','—')}")
+                if _tc.button("🗑", key=f"del_pt_{_ppid}_{_tr['tramo']}", help="Apagar tramo"):
+                    _pt_list[:] = [t for t in _pt_list
+                                   if not (t["portico_id"] == _ppid and t["tramo"] == _tr["tramo"])]
+                    st.session_state.portico_tramos = _pt_list
+                    _rebuild_psmap(_pt_list, st.session_state)
+                    st.rerun()
 
         st.divider()
-        # Adicionar / editar pórtico
-        with st.form("form_portico_sb", clear_on_submit=True):
-            _pp_new_id = st.text_input("ID do pórtico (ex: P1-P2, V1)", placeholder="portico_id do CSV")
-            _pp_c1, _pp_c2 = st.columns(2)
-            _pp_piso = _pp_c1.multiselect("Lajes de piso", options=_sb_piso_ids, key="pp_piso_sel")
-            _pp_cob  = _pp_c2.multiselect("Lajes de cobertura", options=_sb_cob_ids, key="pp_cob_sel")
-            if st.form_submit_button("✅ Guardar atribuição"):
-                if _pp_new_id.strip():
-                    _psmap_sb[_pp_new_id.strip()] = _pp_piso + _pp_cob
-                    st.session_state.portico_slab_map = _psmap_sb
-                    st.rerun()
+        st.caption("➕ Adicionar tramo")
+        with st.form("form_pt_tramo", clear_on_submit=True):
+            _ptf1, _ptf2 = st.columns(2)
+            _pt_pid_in  = _ptf1.text_input("ID do pórtico", value="B1")
+            _pt_tramo_n = _ptf1.number_input("Tramo nº", value=max([t["tramo"] for t in _pt_list
+                                              if t.get("portico_id") == "B1"] or [0]) + 1,
+                                              min_value=1, step=1)
+            _pt_span    = _ptf1.number_input("Distância entre pilares (m)", value=5.0, min_value=0.5, step=0.25)
+            _pt_pe_idx  = 0
+            _pt_pd_idx  = 0
+            _pt_pe  = _ptf2.selectbox("Pilar esquerdo", _pil_opts_pt, index=_pt_pe_idx)
+            _pt_pd  = _ptf2.selectbox("Pilar direito",  _pil_opts_pt, index=_pt_pd_idx)
+            _ptc1, _ptc2 = st.columns(2)
+            _pt_lep = _ptc1.selectbox("Laje esq — piso", _pt_piso_ids)
+            _pt_ldp = _ptc2.selectbox("Laje dir — piso", _pt_piso_ids)
+            _pt_lec = _ptc1.selectbox("Laje esq — cob",  _pt_cob_ids)
+            _pt_ldc = _ptc2.selectbox("Laje dir — cob",  _pt_cob_ids)
+            if st.form_submit_button("➕ Adicionar tramo"):
+                _pid_clean = _pt_pid_in.strip() or "B1"
+                _pt_list.append({
+                    "portico_id": _pid_clean, "tramo": int(_pt_tramo_n),
+                    "pilar_esq": _pt_pe, "pilar_dir": _pt_pd, "span_m": float(_pt_span),
+                    "laje_esq_piso": "" if _pt_lep == "—" else _pt_lep,
+                    "laje_dir_piso": "" if _pt_ldp == "—" else _pt_ldp,
+                    "laje_esq_cob":  "" if _pt_lec == "—" else _pt_lec,
+                    "laje_dir_cob":  "" if _pt_ldc == "—" else _pt_ldc,
+                })
+                st.session_state.portico_tramos = _pt_list
+                _rebuild_psmap(_pt_list, st.session_state)
+                st.rerun()
 
     # ── Configuração de Cargas ───────────────────────────────────────────────
     st.divider()
