@@ -664,9 +664,11 @@ with st.sidebar:
                 _ca, _cb = st.columns([9, 1])
                 _cc_lbl = (f"  carga={_tr.get('carga_concentrada_kn',0):.0f}kN"
                            if _tr.get("carga_concentrada_kn", 0) else "")
+                _alt_lbl = (f"  h={_tr.get('altura_m',0):.2f}m"
+                            if _tr.get("altura_m") else "")
                 _ca.caption(
                     f"  T{_tr['tramo']}: {_tr.get('pilar_esq','—')}→{_tr.get('pilar_dir','—')}  "
-                    f"{_tr.get('span_m',0):.2f}m{_cc_lbl}"
+                    f"{_tr.get('span_m',0):.2f}m{_alt_lbl}{_cc_lbl}"
                 )
                 if _cb.button("🗑", key=f"del_ptr_{_ppid}_{_tidx}", help="Apagar tramo"):
                     st.session_state.portico_tramos = [
@@ -703,35 +705,42 @@ with st.sidebar:
             st.caption("Preenche cada tramo e clica Guardar.")
 
             with st.form("form_pt_fill"):
-                _tv: list = []   # (pe, pd, sp, lep, ldp, lec, ldc, cc, dcc)
+                # Default height from col_config
+                _default_h = float((_cc_pt or {}).get("h_piso", 2.80))
+                _tv: list = []   # (pe, pd, sp, alt, lep, ldp, lec, ldc, cc, dcc)
                 for _i in range(_draft_n):
                     st.markdown(f"**Tramo {_i + 1}**")
-                    _r1a, _r1b, _r1c = st.columns(3)
+                    _r1a, _r1b = st.columns(2)
                     _pe  = _r1a.selectbox("Pilar esq.", _pil_opts_pt,
                                           key=f"dp_pe_{_i}")
                     _pd  = _r1b.selectbox("Pilar dir.", _pil_opts_pt,
                                           key=f"dp_pd_{_i}")
-                    _sp  = _r1c.number_input("Dist. (m)", value=5.0,
+                    _r2a, _r2b = st.columns(2)
+                    _sp  = _r2a.number_input("Dist. entre pilares (m)", value=5.0,
                                              min_value=0.1, step=0.05,
                                              key=f"dp_sp_{_i}")
-                    _r2a, _r2b = st.columns(2)
-                    _lep = _r2a.selectbox("Laje esq piso", _pt_piso_ids,
-                                          key=f"dp_lep_{_i}")
-                    _ldp = _r2b.selectbox("Laje dir piso", _pt_piso_ids,
-                                          key=f"dp_ldp_{_i}")
+                    _alt = _r2b.number_input("Altura do piso (m)", value=_default_h,
+                                             min_value=1.0, step=0.05,
+                                             key=f"dp_alt_{_i}",
+                                             help="Altura livre do piso neste tramo")
                     _r3a, _r3b = st.columns(2)
-                    _lec = _r3a.selectbox("Laje esq cob", _pt_cob_ids,
-                                          key=f"dp_lec_{_i}")
-                    _ldc = _r3b.selectbox("Laje dir cob", _pt_cob_ids,
-                                          key=f"dp_ldc_{_i}")
+                    _lep = _r3a.selectbox("Laje esq piso", _pt_piso_ids,
+                                          key=f"dp_lep_{_i}")
+                    _ldp = _r3b.selectbox("Laje dir piso", _pt_piso_ids,
+                                          key=f"dp_ldp_{_i}")
                     _r4a, _r4b = st.columns(2)
-                    _cc_kn  = _r4a.number_input("Carga conc. (kN)", value=0.0,
+                    _lec = _r4a.selectbox("Laje esq cob", _pt_cob_ids,
+                                          key=f"dp_lec_{_i}")
+                    _ldc = _r4b.selectbox("Laje dir cob", _pt_cob_ids,
+                                          key=f"dp_ldc_{_i}")
+                    _r5a, _r5b = st.columns(2)
+                    _cc_kn  = _r5a.number_input("Carga conc. (kN)", value=0.0,
                                                 min_value=0.0, step=1.0,
                                                 key=f"dp_cc_{_i}")
-                    _cc_dpl = _r4b.number_input("Dist. ao P.dir (m)", value=0.0,
+                    _cc_dpl = _r5b.number_input("Dist. ao P.dir (m)", value=0.0,
                                                 min_value=0.0, step=0.05,
                                                 key=f"dp_dcc_{_i}")
-                    _tv.append((_pe, _pd, _sp, _lep, _ldp, _lec, _ldc,
+                    _tv.append((_pe, _pd, _sp, _alt, _lep, _ldp, _lec, _ldc,
                                 _cc_kn, _cc_dpl))
 
                 _col_ok, _col_cancel = st.columns(2)
@@ -739,7 +748,7 @@ with st.sidebar:
                 _pt_canceled = _col_cancel.form_submit_button("❌ Cancelar")
 
                 if _pt_saved:
-                    for _i, (_pe, _pd, _sp, _lep, _ldp, _lec, _ldc,
+                    for _i, (_pe, _pd, _sp, _alt, _lep, _ldp, _lec, _ldc,
                              _cc_kn, _cc_dpl) in enumerate(_tv):
                         _pt_list.append({
                             "portico_id": _draft_id,
@@ -747,6 +756,7 @@ with st.sidebar:
                             "pilar_esq":  "" if _pe  == "—" else _pe,
                             "pilar_dir":  "" if _pd  == "—" else _pd,
                             "span_m":     float(_sp),
+                            "altura_m":   float(_alt),
                             "laje_esq_piso": "" if _lep == "—" else _lep,
                             "laje_dir_piso": "" if _ldp == "—" else _ldp,
                             "laje_esq_cob":  "" if _lec == "—" else _lec,
@@ -1376,6 +1386,7 @@ with tab_porticos:
                     "P. esq.": _tr.get("pilar_esq", "—") or "—",
                     "P. dir.": _tr.get("pilar_dir", "—") or "—",
                     "Dist. (m)": round(_tr.get("span_m", 0), 2),
+                    "Alt. (m)":  round(_tr.get("altura_m", 0), 2) if _tr.get("altura_m") else "—",
                     "Laje esq.": _tr.get("laje_esq_piso", "") or _tr.get("laje_esq_cob", "") or "—",
                     "Laje dir.": _tr.get("laje_dir_piso", "") or _tr.get("laje_dir_cob", "") or "—",
                     "Carga conc.": _cc_txt,
