@@ -61,6 +61,7 @@ for _key, _val in [
     ("portico_slab_map", {}),
     ("portico_tramos", []),
     ("wall_slab_map", {}),
+    ("beam_overrides", {}),
     ("col_config", None),
     ("cols_in_cont_footing", []),
     ("load_cfg", None),
@@ -178,7 +179,7 @@ with st.sidebar:
     # Guardar inputs (sempre visível — não precisa de cálculo)
     _inp_keys = ["manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
                  "manual_stairs", "col_config", "cols_in_cont_footing",
-                 "portico_slab_map", "portico_tramos"]
+                 "portico_slab_map", "portico_tramos", "beam_overrides"]
     _inp_snap = {k: st.session_state.get(k) for k in _inp_keys}
     _inp_bytes = _save_inp(_inp_snap)
     st.download_button(
@@ -200,6 +201,7 @@ with st.sidebar:
             "portico_slab_map":     st.session_state.get("portico_slab_map", {}),
             "portico_tramos":       st.session_state.get("portico_tramos", []),
             "wall_slab_map":        st.session_state.get("wall_slab_map", {}),
+            "beam_overrides":       st.session_state.get("beam_overrides", {}),
         }
         _proj_bytes = _save_proj(_proj_now, session_state=_ss_to_save)
         _safe_name  = _proj_now.name.replace(" ", "_").replace("/", "-")
@@ -258,7 +260,8 @@ with st.sidebar:
                             st.session_state.portico_tramos = _ss_saved["portico_tramos"]
                         else:
                             st.session_state.portico_tramos = []
-                        st.session_state.wall_slab_map = _ss_saved.get("wall_slab_map", {})
+                        st.session_state.wall_slab_map   = _ss_saved.get("wall_slab_map", {})
+                        st.session_state.beam_overrides  = _ss_saved.get("beam_overrides", {})
                         st.session_state["_raptor_loaded_id"] = _up_uid
                         _n_rw = len(st.session_state.manual_retaining_walls)
                         _n_sl = len(st.session_state.manual_slabs)
@@ -1113,6 +1116,15 @@ if run_btn:
             project.qk_floor_kn_m2 = lcfg.get("qk_piso", 2.0)
             project.gk_roof_kn_m2  = lcfg.get("gk_cob",  5.5)
             project.qk_roof_kn_m2  = lcfg.get("qk_cob",  1.0)
+            # Apply user beam section overrides (e.g. vigas planas with h = slab thickness)
+            _bov_run = st.session_state.get("beam_overrides", {})
+            for _b in project.beams:
+                _ov = _bov_run.get(_b.id, {})
+                if _ov.get("width_cm"):
+                    _b.width_cm = float(_ov["width_cm"])
+                if _ov.get("height_cm"):
+                    _b.height_cm = float(_ov["height_cm"])
+                    _b.effective_depth_cm = float(_ov["height_cm"]) - 5.0
             AutoPipeline().run(project, slab_loads=slab_loads)
             ProjectAdvisor().project_score(project)
             ProjectAdvisor().generate_advice(project)
@@ -1134,6 +1146,14 @@ if opt_btn and st.session_state.project:
                 st.info("Não foram necessárias alterações automáticas.")
             else:
                 reset_project_results(p)
+                _bov_opt = st.session_state.get("beam_overrides", {})
+                for _b in p.beams:
+                    _ov = _bov_opt.get(_b.id, {})
+                    if _ov.get("width_cm"):
+                        _b.width_cm = float(_ov["width_cm"])
+                    if _ov.get("height_cm"):
+                        _b.height_cm = float(_ov["height_cm"])
+                        _b.effective_depth_cm = float(_ov["height_cm"]) - 5.0
                 AutoPipeline().run(p)
                 ProjectAdvisor().project_score(p)
                 ProjectAdvisor().generate_advice(p)
@@ -1551,6 +1571,32 @@ with tab_vigas:
             )
             if _new_mh != _cur_mh:
                 _beam.max_height_cm = _new_mh
+
+    # Editor: set beam cross-section b×h (useful for vigas planas where h = slab thickness)
+    _bov_state = st.session_state.get("beam_overrides", {})
+    _bov_changed = dict(_bov_state)
+    with st.expander("✏️ Editar secção das vigas (b×h) — vigas planas e ajustes manuais"):
+        st.caption("Altera b×h de qualquer viga. Clica **▶ Correr cálculo** para aplicar as dimensões alteradas.")
+        _bsec_hdr = st.columns([0.35, 0.32, 0.33])
+        _bsec_hdr[0].markdown("**Viga**")
+        _bsec_hdr[1].markdown("**b (cm)**")
+        _bsec_hdr[2].markdown("**h (cm)**")
+        for _beam in p.beams:
+            _ov = _bov_changed.get(_beam.id, {})
+            _cur_b = float(_ov.get("width_cm",  _beam.width_cm))
+            _cur_h = float(_ov.get("height_cm", _beam.height_cm))
+            _col_lbl, _col_b, _col_h = st.columns([0.35, 0.32, 0.33])
+            _col_lbl.markdown(f"**{_beam.id}** ({int(_beam.width_cm)}×{int(_beam.height_cm)})")
+            _new_b = _col_b.number_input(
+                "b", value=_cur_b, min_value=10.0, max_value=150.0, step=5.0,
+                key=f"bov_b_{_beam.id}", label_visibility="collapsed"
+            )
+            _new_h = _col_h.number_input(
+                "h", value=_cur_h, min_value=10.0, max_value=200.0, step=5.0,
+                key=f"bov_h_{_beam.id}", label_visibility="collapsed"
+            )
+            _bov_changed[_beam.id] = {"width_cm": _new_b, "height_cm": _new_h}
+    st.session_state.beam_overrides = _bov_changed
 
     rows = []
     for b in p.beams:
