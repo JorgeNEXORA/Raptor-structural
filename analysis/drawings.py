@@ -1195,13 +1195,10 @@ def _dxf_text(msp, txt, x, y, h, layer, align='LEFT', color=None):
 
 def _dxf_dim_linear(msp, x0, x1, y_dim, tick_h, txt, layer, h_txt):
     """Horizontal dimension line from x0 to x1 at y=y_dim."""
-    # Main dimension line
     msp.add_line((x0, y_dim), (x1, y_dim), dxfattribs={'layer': layer, 'lineweight': 13})
-    # Ticks
     for xd in [x0, x1]:
         msp.add_line((xd, y_dim - tick_h*0.5), (xd, y_dim + tick_h*0.5),
                      dxfattribs={'layer': layer, 'lineweight': 13})
-    # Arrow-like serifs
     for xd, sign in [(x0, 1), (x1, -1)]:
         msp.add_line((xd, y_dim),
                      (xd + sign * tick_h * 0.8, y_dim + tick_h * 0.4),
@@ -1210,6 +1207,22 @@ def _dxf_dim_linear(msp, x0, x1, y_dim, tick_h, txt, layer, h_txt):
                      (xd + sign * tick_h * 0.8, y_dim - tick_h * 0.4),
                      dxfattribs={'layer': layer, 'lineweight': 13})
     _dxf_text(msp, txt, (x0+x1)/2, y_dim + tick_h*0.7, h_txt, layer, 'CENTER')
+
+
+def _dxf_dim_vertical(msp, x_dim, y0, y1, tick_h, txt, layer, h_txt):
+    """Vertical dimension line at x=x_dim from y0 to y1."""
+    msp.add_line((x_dim, y0), (x_dim, y1), dxfattribs={'layer': layer, 'lineweight': 13})
+    for yd in [y0, y1]:
+        msp.add_line((x_dim - tick_h*0.5, yd), (x_dim + tick_h*0.5, yd),
+                     dxfattribs={'layer': layer, 'lineweight': 13})
+    for yd, sign in [(y0, 1), (y1, -1)]:
+        msp.add_line((x_dim, yd),
+                     (x_dim + tick_h*0.4, yd + sign * tick_h * 0.8),
+                     dxfattribs={'layer': layer, 'lineweight': 13})
+        msp.add_line((x_dim, yd),
+                     (x_dim - tick_h*0.4, yd + sign * tick_h * 0.8),
+                     dxfattribs={'layer': layer, 'lineweight': 13})
+    _dxf_text(msp, txt, x_dim - tick_h*0.9, (y0+y1)/2, h_txt, layer, 'CENTER')
 
 
 def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off, label=None):
@@ -2654,4 +2667,130 @@ def draw_wall_detail_dxf(project: 'Project') -> bytes:
     if project.name:
         _det_txt(msp, f"Obra: {project.name}", 0, -46, 5)
     out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
+
+
+# ── Alçados de Pórticos DXF ──────────────────────────────────────────────────
+
+def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> bytes:
+    """DXF with 2D elevation drawings for each pórtico defined in portico_tramos."""
+    try:
+        doc, msp = _dxf_new_doc()
+    except ImportError:
+        return b""
+    if not doc:
+        return b""
+
+    for lname, color in [('PORTICOS', 5), ('COTAS_PT', 1)]:
+        if lname not in doc.layers:
+            doc.layers.add(lname, color=color)
+
+    pt_groups: dict = {}
+    for tr in portico_tramos:
+        pid = tr.get("portico_id", "?")
+        pt_groups.setdefault(pid, []).append(tr)
+
+    col_dim_map = {c.id: (float(c.width_cm), float(c.depth_cm), float(c.height_m))
+                   for c in project.columns}
+
+    TH_LG = 0.175
+    TH_MD = 0.125
+    TH_SM = 0.100
+    COL_W_DRAW = 0.25
+    BEAM_H_MIN = 0.20
+    GAP_BETWEEN = 2.5
+
+    Y0 = 0.0
+
+    for pid, tramos in pt_groups.items():
+        tramos_s = sorted(tramos, key=lambda x: x["tramo"])
+
+        col_x: dict = {}
+        x_cur = 0.0
+        for tr in tramos_s:
+            pe  = (tr.get("pilar_esq") or "").strip()
+            pdi = (tr.get("pilar_dir")  or "").strip()
+            if pe  and pe  not in col_x: col_x[pe]  = x_cur
+            x_cur += float(tr.get("span_m") or 5.0)
+            if pdi and pdi not in col_x: col_x[pdi] = x_cur
+        total_w = x_cur
+
+        floor_h = 3.0
+        for tr in tramos_s:
+            if tr.get("altura_m") and float(tr["altura_m"]) >= 1.0:
+                floor_h = float(tr["altura_m"])
+                break
+        if floor_h == 3.0:
+            for cid in col_x:
+                if cid in col_dim_map and col_dim_map[cid][2] >= 1.0:
+                    floor_h = col_dim_map[cid][2]
+                    break
+
+        # Ground line
+        msp.add_line((-0.8, Y0), (total_w + 0.3, Y0),
+                     dxfattribs={'layer': 'VIGAS', 'lineweight': 25})
+        for cx in col_x.values():
+            for k in range(5):
+                msp.add_line((cx - 0.10 + k*0.10, Y0),
+                             (cx - 0.20 + k*0.10, Y0 - 0.12),
+                             dxfattribs={'layer': 'VIGAS', 'lineweight': 9})
+
+        # Columns
+        for cid, cx in col_x.items():
+            ch = col_dim_map[cid][2] if (cid in col_dim_map and col_dim_map[cid][2] >= 1.0) else floor_h
+            _dxf_rect(msp, cx - COL_W_DRAW/2, Y0, COL_W_DRAW, ch, 'PILARES', lw=35)
+            _dxf_hatch(msp, cx - COL_W_DRAW/2, Y0, COL_W_DRAW, ch, 'PILARES', 'ANSI31', 0.04)
+            _dxf_text(msp, cid, cx, Y0 - 0.22, TH_MD, 'TEXTO', 'CENTER', color=7)
+            if cid in col_dim_map:
+                bw_c, bd_c, _ = col_dim_map[cid]
+                _dxf_text(msp, f'{int(bw_c)}x{int(bd_c)}',
+                          cx, Y0 - 0.40, TH_SM, 'TEXTO', 'CENTER', color=8)
+
+        # Height dimension
+        _dxf_dim_vertical(msp, -0.55, Y0, Y0 + floor_h, 0.12,
+                          f'h={floor_h:.2f}m', 'COTAS', TH_MD)
+
+        # Beams
+        for tr in tramos_s:
+            pe  = (tr.get("pilar_esq") or "").strip()
+            pdi = (tr.get("pilar_dir")  or "").strip()
+            if pe not in col_x or pdi not in col_x:
+                continue
+            x1, x2   = col_x[pe], col_x[pdi]
+            bh_cm     = float(tr.get("secao_h_cm") or 40)
+            bb_cm     = float(tr.get("secao_b_cm") or 25)
+            bh_m      = max(bh_cm / 100, BEAM_H_MIN)
+            span      = float(tr.get("span_m") or abs(x2 - x1))
+            mid_x     = (x1 + x2) / 2
+            beam_top  = Y0 + floor_h
+
+            _dxf_rect(msp, x1, beam_top - bh_m, x2 - x1, bh_m, 'VIGAS', lw=35)
+            _dxf_dim_linear(msp, x1, x2, beam_top + 0.30, 0.13,
+                            f'L={span:.2f}m', 'COTAS', TH_MD)
+            _dxf_text(msp, f'T{tr["tramo"]}  {int(bb_cm)}x{int(bh_cm)}',
+                      mid_x, beam_top - bh_m/2, TH_SM, 'TEXTO', 'CENTER', color=7)
+            lj_esq = tr.get("laje_esq_piso") or tr.get("laje_esq_cob") or ""
+            lj_dir = tr.get("laje_dir_piso") or tr.get("laje_dir_cob") or ""
+            if lj_esq:
+                _dxf_text(msp, lj_esq, x1 + span*0.15, beam_top - bh_m - 0.12,
+                          TH_SM, 'TEXTO', 'LEFT', color=5)
+            if lj_dir:
+                _dxf_text(msp, lj_dir, x2 - span*0.15, beam_top - bh_m - 0.12,
+                          TH_SM, 'TEXTO', 'RIGHT', color=5)
+
+        # Total span
+        if len(col_x) >= 2:
+            x_all = sorted(col_x.values())
+            _dxf_dim_linear(msp, x_all[0], x_all[-1], Y0 + floor_h + 0.65, 0.13,
+                            f'Total = {x_all[-1]-x_all[0]:.2f} m', 'COTAS', TH_MD)
+
+        # Title
+        _dxf_text(msp, pid.upper(), total_w/2, Y0 + floor_h + 1.05, TH_LG,
+                  'TEXTO', 'CENTER', color=7)
+
+        Y0 -= (floor_h + GAP_BETWEEN + 1.2)
+
+    _dxf_title_block(msp, project, "ALCADOS DE PORTICOS", "1:50")
+    out = io.StringIO()
+    doc.write(out)
     return out.getvalue().encode('utf-8')

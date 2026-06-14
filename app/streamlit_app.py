@@ -1024,7 +1024,8 @@ with st.sidebar:
                                                draw_footing_detail_dxf,
                                                draw_column_section_dxf,
                                                draw_tie_beam_detail_dxf,
-                                               draw_wall_detail_dxf)
+                                               draw_wall_detail_dxf,
+                                               draw_portico_elevations_dxf)
                 _p = st.session_state.project
                 if not st.session_state.get("drawings_ready"):
                     with st.spinner("A gerar desenhos DXF…"):
@@ -1040,7 +1041,16 @@ with st.sidebar:
                         st.session_state["dxf_porm_pilares"]  = draw_column_section_dxf(_p)
                         st.session_state["dxf_porm_equilib"]  = draw_tie_beam_detail_dxf(_p)
                         st.session_state["dxf_porm_muros"]    = draw_wall_detail_dxf(_p)
+                        _pt_tramos = st.session_state.get("portico_tramos", [])
+                        if _pt_tramos:
+                            st.session_state["dxf_porticos"] = draw_portico_elevations_dxf(_p, _pt_tramos)
                         st.session_state["drawings_ready"] = True
+                if st.session_state.get("dxf_porticos"):
+                    st.download_button("⬇  Alçados de Pórticos (DXF)",
+                        data=st.session_state["dxf_porticos"],
+                        file_name="alcados_porticos.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
                 if st.session_state.get("dxf_fundacoes"):
                     st.download_button("⬇  Planta Fundações (DXF)",
                         data=st.session_state["dxf_fundacoes"],
