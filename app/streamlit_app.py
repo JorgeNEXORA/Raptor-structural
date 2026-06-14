@@ -323,6 +323,56 @@ with st.sidebar:
                 st.session_state.manual_retaining_walls = []
                 st.rerun()
 
+    # ── Lajes ────────────────────────────────────────────────────────────────
+    _pavinorte_sb = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
+    _other_sb     = [n for n in sorted(CATALOG.keys()) if not n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
+    _cat_sb_opts  = ["(automático)"] + _pavinorte_sb + _other_sb
+    _lcfg_sb      = st.session_state.get("load_cfg") or {}
+    _zona_map_sb  = {
+        "Habitável": (_lcfg_sb.get("gk_piso", 6.15), _lcfg_sb.get("qk_piso", 2.0)),
+        "Garagem":   (_lcfg_sb.get("gk_gar",  4.80), _lcfg_sb.get("qk_gar",  2.5)),
+        "Varanda":   (_lcfg_sb.get("gk_var",  5.50), _lcfg_sb.get("qk_var",  3.0)),
+        "Cobertura": (_lcfg_sb.get("gk_cob",  5.50), _lcfg_sb.get("qk_cob",  1.0)),
+    }
+    with st.expander(f"⬜ Lajes ({len(st.session_state.manual_slabs)})"):
+        with st.form("form_add_slab_sb", clear_on_submit=True):
+            _sb1, _sb2 = st.columns(2)
+            _sl_id_sb   = _sb1.text_input("ID", value=f"LP{len(st.session_state.manual_slabs)+1}")
+            _sl_span_sb = _sb1.number_input("Vão (m)", value=4.0, min_value=0.5, step=0.25)
+            _sl_thk_sb  = _sb1.number_input("Esp. (cm)", value=25, min_value=8, max_value=50, step=1)
+            _sl_d_sb    = _sb1.number_input("d útil (cm)", value=20, min_value=5, max_value=45, step=1)
+            _sl_type_sb = _sb2.selectbox("Tipo", ["Aligeirada", "Maciça 1D", "Maciça 2D", "Consola"])
+            _sl_lvl_sb  = _sb2.selectbox("Nível", ["piso", "cobertura"])
+            _sl_dir_sb  = _sb2.selectbox("Direção", ["X", "Y"])
+            _sl_zona_sb = _sb2.selectbox("Zona", list(_zona_map_sb.keys()))
+            _sl_cat_sb  = st.selectbox("Catálogo", _cat_sb_opts)
+            if st.form_submit_button("➕ Adicionar laje"):
+                _type_map_sb = {"Aligeirada": "ribbed", "Maciça 1D": "one_way",
+                                "Maciça 2D": "two_way", "Consola": "cantilever"}
+                _gk_sb, _qk_sb = _zona_map_sb[_sl_zona_sb]
+                _ns = SlabPanel(
+                    id=_sl_id_sb.strip() or f"LP{len(st.session_state.manual_slabs)+1}",
+                    span_m=float(_sl_span_sb),
+                    thickness_cm=float(_sl_thk_sb),
+                    effective_depth_cm=float(_sl_d_sb),
+                    slab_type=SlabType(_type_map_sb[_sl_type_sb]),
+                    gk_kn_m2=_gk_sb,
+                    qk_kn_m2=_qk_sb,
+                    direction=_sl_dir_sb.lower(),
+                )
+                _ns.level = _sl_lvl_sb
+                _ns.catalog_id = None if _sl_cat_sb == "(automático)" else _sl_cat_sb
+                _ns.support_beam_ids = []
+                st.session_state.manual_slabs.append(_ns)
+                st.rerun()
+        if st.session_state.manual_slabs:
+            for _ms in st.session_state.manual_slabs:
+                st.caption(f"**{_ms.id}** {getattr(_ms,'level','piso')} | {_ms.span_m}m "
+                           f"h={int(_ms.thickness_cm)}cm gk={_ms.gk_kn_m2:.1f} qk={_ms.qk_kn_m2:.1f}")
+            if st.button("🗑 Limpar lajes", key="btn_clear_slabs_sb"):
+                st.session_state.manual_slabs = []
+                st.rerun()
+
     # ── Configuração de Cargas ───────────────────────────────────────────────
     st.divider()
     st.markdown("**Configuração de cargas**")
@@ -1054,68 +1104,15 @@ with tab_pilares:
 
 # ── Lajes ─────────────────────────────────────────────────────────────────────
 with tab_lajes:
-    # ── Adicionar laje manualmente ────────────────────────────────────────────
-    _beam_ids_avail = [b.id for b in p.beams] if p.beams else []
-    _pavinorte_names_add = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
-    _other_names_add     = [n for n in sorted(CATALOG.keys()) if not n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
-    _cat_add_opts = ["(automático)"] + _pavinorte_names_add + _other_names_add
-
-    with st.expander(f"➕ Adicionar laje — {len(st.session_state.manual_slabs)} adicionada(s) manualmente"):
-        st.caption("Define cada painel de laje e quais as vigas onde descarrega. Clica **▶ Correr cálculo** para analisar.")
-        with st.form("form_add_slab", clear_on_submit=True):
-            _fa1, _fa2, _fa3 = st.columns(3)
-            _sl_id   = _fa1.text_input("ID", value=f"LP{len(p.slabs)+len(st.session_state.manual_slabs)+1}")
-            _sl_span = _fa1.number_input("Vão (m)", value=4.0, min_value=0.5, step=0.25)
-            _sl_thk  = _fa1.number_input("Espessura (cm)", value=25, min_value=8, max_value=50, step=1)
-            _sl_d    = _fa1.number_input("d útil (cm)", value=20, min_value=5, max_value=45, step=1)
-            _sl_type = _fa2.selectbox("Tipo", ["Aligeirada (vigotas)", "Maciça 1 dir.", "Maciça 2 dir.", "Consola"])
-            _sl_lvl  = _fa2.selectbox("Nível", ["piso", "cobertura"])
-            _sl_dir  = _fa2.selectbox("Direção", ["X", "Y"])
-            _sl_zona = _fa2.selectbox("Zona de carga", ["Habitável", "Garagem", "Varanda", "Cobertura"])
-            _sl_cat  = _fa3.selectbox("Catálogo/Vigota", _cat_add_opts)
-            _sl_beams = _fa3.multiselect(
-                "Vigas de apoio (pórticos onde descarrega)",
-                options=_beam_ids_avail,
-                help="Seleciona as vigas que suportam esta laje. Se vazio, o programa distribui automaticamente.",
-            )
-            if st.form_submit_button("➕ Adicionar laje"):
-                _lcfg2 = st.session_state.get("load_cfg") or {}
-                _zona_map2 = {
-                    "Habitável": (_lcfg2.get("gk_piso", 6.15), _lcfg2.get("qk_piso", 2.0)),
-                    "Garagem":   (_lcfg2.get("gk_gar",  4.80), _lcfg2.get("qk_gar",  2.5)),
-                    "Varanda":   (_lcfg2.get("gk_var",  5.50), _lcfg2.get("qk_var",  3.0)),
-                    "Cobertura": (_lcfg2.get("gk_cob",  5.50), _lcfg2.get("qk_cob",  1.0)),
-                }
-                _type_map2 = {"Aligeirada (vigotas)": "ribbed", "Maciça 1 dir.": "one_way",
-                              "Maciça 2 dir.": "two_way", "Consola": "cantilever"}
-                _gk2, _qk2 = _zona_map2[_sl_zona]
-                _new_slab = SlabPanel(
-                    id=_sl_id.strip() or f"LP{len(p.slabs)+1}",
-                    span_m=float(_sl_span),
-                    thickness_cm=float(_sl_thk),
-                    effective_depth_cm=float(_sl_d),
-                    slab_type=SlabType(_type_map2[_sl_type]),
-                    gk_kn_m2=_gk2,
-                    qk_kn_m2=_qk2,
-                    direction=_sl_dir.lower(),
-                )
-                _new_slab.level = _sl_lvl
-                _new_slab.catalog_id = None if _sl_cat == "(automático)" else _sl_cat
-                _new_slab.support_beam_ids = list(_sl_beams)
-                st.session_state.manual_slabs.append(_new_slab)
-                st.rerun()
-
-        if st.session_state.manual_slabs:
-            st.markdown("**Lajes adicionadas manualmente:**")
+    # Lajes manuais — adicionadas na barra lateral
+    if st.session_state.manual_slabs:
+        with st.expander(f"✅ {len(st.session_state.manual_slabs)} laje(s) adicionada(s) manualmente — ver lista"):
             for _ms in st.session_state.manual_slabs:
-                _bids = ", ".join(_ms.support_beam_ids) if _ms.support_beam_ids else "auto"
-                st.caption(f"**{_ms.id}** — Vão {_ms.span_m}m | {_ms.slab_type.value} | {getattr(_ms,'level','piso')} | "
-                           f"gk={_ms.gk_kn_m2:.2f} qk={_ms.qk_kn_m2:.2f} | apoios: {_bids}")
-            _del_cols = st.columns([3, 1])
-            _del_id = _del_cols[0].selectbox("Remover laje", [s.id for s in st.session_state.manual_slabs], key="del_slab_id")
-            if _del_cols[1].button("🗑 Remover", key="btn_del_slab"):
-                st.session_state.manual_slabs = [s for s in st.session_state.manual_slabs if s.id != _del_id]
-                st.rerun()
+                _bids = ", ".join(_ms.support_beam_ids) if _ms.support_beam_ids else "(atribuir na tab Pórticos)"
+                st.caption(f"**{_ms.id}** | {getattr(_ms,'level','piso')} | vão {_ms.span_m}m | "
+                           f"h={int(_ms.thickness_cm)}cm | gk={_ms.gk_kn_m2:.1f} qk={_ms.qk_kn_m2:.1f} | apoios: {_bids}")
+    else:
+        st.caption("Adiciona lajes na **barra lateral** (secção ⬜ Lajes) e clica **▶ Correr cálculo**.")
     st.divider()
 
     # Presdouro catalog selector
