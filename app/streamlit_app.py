@@ -212,6 +212,7 @@ with st.sidebar:
                     st.session_state.drawings_ready = False
                     # Restaurar session state manuais a partir do projeto
                     st.session_state.manual_retaining_walls = list(_loaded.retaining_walls or [])
+                    # Lajes sem polígono foram criadas manualmente (não vêm de DXF)
                     st.session_state.manual_slabs = [s for s in (_loaded.slabs or [])
                                                      if not getattr(s, 'polygon_points', None)]
                     st.session_state.manual_flat_slabs = list(getattr(_loaded, 'flat_slabs', []) or [])
@@ -1111,7 +1112,18 @@ with tab_res:
 
 # ── Pórticos ──────────────────────────────────────────────────────────────────
 with tab_porticos:
-    _all_slab_ids = [s.id for s in p.slabs] + [s.id for s in st.session_state.manual_slabs]
+    # Deduplicate slabs from project + manual (loading restores both)
+    _seen_pt = set()
+    _piso_slab_ids, _cob_slab_ids = [], []
+    for _s in list(p.slabs) + list(st.session_state.manual_slabs):
+        if _s.id in _seen_pt:
+            continue
+        _seen_pt.add(_s.id)
+        if getattr(_s, 'level', 'piso') == 'cobertura':
+            _cob_slab_ids.append(_s.id)
+        else:
+            _piso_slab_ids.append(_s.id)
+    _all_slab_ids_pt = _piso_slab_ids + _cob_slab_ids
 
     # Group FRAME beams by portico_id
     _portico_groups: dict = {}
@@ -1128,8 +1140,8 @@ with tab_porticos:
         st.info("Nenhum pórtico (viga de tipo FRAME) encontrado no modelo.")
     else:
         st.caption(
-            "Atribui as lajes que descarregam em cada pórtico. "
-            "As associações são aplicadas automaticamente ao clicar **▶ Correr cálculo**."
+            "Para cada pórtico seleciona as lajes de **piso** e de **cobertura** que apoiam nele. "
+            "Clica **▶ Correr cálculo** para aplicar."
         )
         _psmap = st.session_state["portico_slab_map"]
         for _pid, _pbeams in _portico_groups.items():
@@ -1143,19 +1155,25 @@ with tab_porticos:
                             _seeded.append(_sid)
                 _psmap[_pid] = _seeded
 
+            _cur_sel = _psmap[_pid]
             st.subheader(f"🏗️ {_pid}")
-            _c1, _c2 = st.columns([2, 1])
-            with _c1:
-                _sel = st.multiselect(
-                    "Lajes que descarregam neste pórtico",
-                    options=_all_slab_ids,
-                    default=[s for s in _psmap[_pid] if s in _all_slab_ids],
-                    key=f"pmap_{_pid}",
-                    help="Seleciona todos os painéis de laje (piso e cobertura) que têm apoio neste pórtico.",
+            st.caption(f"Vigas: {', '.join(_bids_in)}")
+            _lc1, _lc2 = st.columns(2)
+            with _lc1:
+                _sel_piso = st.multiselect(
+                    "🏠 Lajes de piso",
+                    options=_piso_slab_ids,
+                    default=[s for s in _cur_sel if s in _piso_slab_ids],
+                    key=f"pmap_{_pid}_piso",
                 )
-                _psmap[_pid] = _sel
-            with _c2:
-                st.caption(f"Vigas: {', '.join(_bids_in)}")
+            with _lc2:
+                _sel_cob = st.multiselect(
+                    "🏗️ Lajes de cobertura",
+                    options=_cob_slab_ids,
+                    default=[s for s in _cur_sel if s in _cob_slab_ids],
+                    key=f"pmap_{_pid}_cob",
+                )
+            _psmap[_pid] = _sel_piso + _sel_cob
 
             # Beam results for this pórtico
             _p_rows = []
