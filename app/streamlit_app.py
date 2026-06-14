@@ -1460,6 +1460,29 @@ with tab_porticos:
             # Beam results (only if beams explicitly tagged with this portico_id)
             _pbeams = _beam_by_pid.get(_pid, [])
             if _pbeams:
+                # b×h editor per beam
+                _bov_pt = st.session_state.get("beam_overrides", {})
+                with st.expander(f"✏️ Editar secção das vigas (b×h) — {_pid}"):
+                    st.caption("Altera b×h. Clica **▶ Recalcular** para aplicar.")
+                    for _pb in _pbeams:
+                        _pov = _bov_pt.get(_pb.id, {})
+                        _pb_b = float(_pov.get("width_cm",  _pb.width_cm))
+                        _pb_h = float(_pov.get("height_cm", _pb.height_cm))
+                        _plbl, _pc1, _pc2 = st.columns([0.35, 0.32, 0.33])
+                        _plbl.markdown(f"**{_pb.id}** ({int(_pb.width_cm)}×{int(_pb.height_cm)} cm)")
+                        _pb_b_new = _pc1.number_input(
+                            "b (cm)", value=_pb_b, min_value=10.0, max_value=150.0, step=5.0,
+                            key=f"povb_b_{_pid}_{_pb.id}", label_visibility="collapsed"
+                        )
+                        _pc1.caption("b")
+                        _pb_h_new = _pc2.number_input(
+                            "h (cm)", value=_pb_h, min_value=10.0, max_value=200.0, step=5.0,
+                            key=f"povb_h_{_pid}_{_pb.id}", label_visibility="collapsed"
+                        )
+                        _pc2.caption("h")
+                        _bov_pt[_pb.id] = {"width_cm": _pb_b_new, "height_cm": _pb_h_new}
+                    st.session_state.beam_overrides = _bov_pt
+
                 _p_rows = []
                 for _b in _pbeams:
                     _r = _b.result
