@@ -1413,6 +1413,21 @@ with tab_porticos:
                 })
             st.dataframe(pd.DataFrame(_tr_rows), use_container_width=True, hide_index=True)
 
+            # Edit altura_m per tramo (useful for tramos created before this field existed)
+            with st.expander(f"✏️ Editar alturas de piso — {_pid}"):
+                st.caption("Altura do piso em cada tramo (m). Clica **▶ Recalcular** para aplicar.")
+                for _tr in sorted(_tramos, key=lambda x: x["tramo"]):
+                    _cur_alt = float(_tr.get("altura_m") or 0.0)
+                    _default_alt = _cur_alt if _cur_alt >= 1.0 else 2.70
+                    _new_alt = st.number_input(
+                        f"Tramo {_tr['tramo']}  {_tr.get('pilar_esq','?')} → {_tr.get('pilar_dir','?')}  (m)",
+                        value=_default_alt, min_value=1.0, max_value=10.0, step=0.05,
+                        key=f"alt_tr_{_pid}_{_tr['tramo']}",
+                    )
+                    _tr["altura_m"] = _new_alt
+                # Write back to session_state so the change persists
+                st.session_state.portico_tramos = _pt_tramos_all
+
             # Seed portico_slab_map from tramos if not yet set
             if _pid not in _psmap:
                 _seeded: list = []
