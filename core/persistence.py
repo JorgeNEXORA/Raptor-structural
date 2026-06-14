@@ -62,6 +62,9 @@ def _beam_type(v: str) -> BeamType:
     except Exception:
         return BeamType.FRAME
 
+def _col_stops_at(v: str) -> str:
+    return "piso" if str(v).strip().lower() in ("piso", "floor", "1") else "cobertura"
+
 
 def _footing_type(v: str) -> FootingType:
     try:
@@ -76,6 +79,7 @@ def _col_from_dict(d: dict) -> Column:
         width_cm=d["width_cm"], depth_cm=d["depth_cm"],
         height_m=d["height_m"],
         shape=d.get("shape", "rectangular"),
+        stops_at=d.get("stops_at", "cobertura"),
     )
     col.loads   = [ColumnLoad(**l) for l in d.get("loads", [])]
     col.result  = _opt(d.get("result"), ColumnResult)
@@ -90,6 +94,8 @@ def _beam_from_dict(d: dict) -> Beam:
         effective_depth_cm=d["effective_depth_cm"],
         span_m=d["span_m"],
         beam_type=_beam_type(d.get("beam_type", "frame")),
+        max_height_cm=d.get("max_height_cm", 0.0),
+        portico_id=d.get("portico_id", ""),
     )
     b.line_loads           = [LineLoad(**l) for l in d.get("line_loads", [])]
     b.supported_slab_ids   = d.get("supported_slab_ids", [])

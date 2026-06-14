@@ -3,10 +3,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
-_MODEL_VERSION = "2026.06.13b"  # forces pycache invalidation on cloud
+_MODEL_VERSION = "2026.06.14a"  # forces pycache invalidation on cloud
 
 class BeamType(str, Enum):
-    FRAME = "frame"
+    FRAME   = "frame"
+    LINTEL  = "lintel"   # viga lintel (porta/janela) — altura restrita por caixa de estore
+    VCT     = "vct"      # viga de travação / equilíbrio horizontal
 
 class SlabType(str, Enum):
     ONE_WAY   = "one_way"
@@ -144,6 +146,8 @@ class Beam:
     effective_depth_cm: float
     span_m: float
     beam_type: BeamType
+    max_height_cm: float = 0.0   # 0 = no constraint; >0 = height limited (e.g. caixa de estore)
+    portico_id: str = ""         # pórtico group label, e.g. "Pórtico 1"
     line_loads: List[LineLoad] = field(default_factory=list)
     supported_slab_ids: List[str] = field(default_factory=list)
     result: Optional[BeamResult] = None
@@ -165,6 +169,7 @@ class Column:
     depth_cm: float        # rectangular: depth;  circular: diameter (same as width_cm)
     height_m: float
     shape: str = "rectangular"   # "rectangular" or "circular"
+    stops_at: str = "cobertura"  # "cobertura" (full height) or "piso" (stops at floor slab)
     loads: List[ColumnLoad] = field(default_factory=list)
     result: Optional[ColumnResult] = None
 

@@ -826,27 +826,47 @@ with tab_res:
 
 # ── Vigas ─────────────────────────────────────────────────────────────────────
 with tab_vigas:
+    # Editor: set max_height_cm per beam (for caixa de estore)
+    _beams_with_limit = [b for b in p.beams if getattr(b, 'max_height_cm', 0.0) > 0]
+    with st.expander(f"✏️ Editar restrições de altura (caixa de estore) — {len(_beams_with_limit)} viga(s) com limite"):
+        st.caption("Define altura máxima para vigas em caixa de estore. 0 = sem restrição.")
+        _bec_cols = st.columns(min(4, max(1, len(p.beams))))
+        for _bi, _beam in enumerate(p.beams):
+            _bec = _bec_cols[_bi % len(_bec_cols)]
+            _cur_mh = float(getattr(_beam, 'max_height_cm', 0.0))
+            _new_mh = _bec.number_input(
+                f"{_beam.id} (cm)", value=_cur_mh, min_value=0.0, step=5.0,
+                key=f"mh_{_beam.id}", help="0 = sem restrição de altura"
+            )
+            if _new_mh != _cur_mh:
+                _beam.max_height_cm = _new_mh
+
+    _beam_type_labels = {"frame": "Pórtico", "lintel": "Lintel/Estore", "vct": "VCT"}
     rows = []
     for b in p.beams:
         r = b.result
         rr = b.reinforcement_result or {}
+        bt_label = _beam_type_labels.get(getattr(b, 'beam_type', 'frame'), getattr(b, 'beam_type', 'frame'))
+        mh = getattr(b, 'max_height_cm', 0.0)
         rows.append({
             "ID": b.id,
+            "Pórtico": getattr(b, 'portico_id', '') or "-",
+            "Tipo": bt_label,
             "Nós": f"{b.start_node}→{b.end_node}",
             "b×h (cm)": f"{int(b.width_cm)}×{int(b.height_cm)}",
+            "h.max (cm)": f"{int(mh)}" if mh > 0 else "-",
             "Span (m)": round(b.span_m, 2),
-            "Msd (kNm)": round(r.msd_knm, 2),
-            "MRd (kNm)": round(getattr(r, "mrd_knm", 0.0), 2),
-            "Vsd (kN)": round(r.vsd_kn, 2),
-            "VRd,c (kN)": round(getattr(r, "vrd_c_kn", 0.0), 2),
-            "VRd (kN)": round(getattr(r, "vrd_kn", 0.0), 2),
-            "As req (cm²)": round(r.required_as_cm2, 2),
+            "Msd (kNm)": round(r.msd_knm, 2) if r else "-",
+            "MRd (kNm)": round(getattr(r, "mrd_knm", 0.0), 2) if r else "-",
+            "Vsd (kN)": round(r.vsd_kn, 2) if r else "-",
+            "VRd (kN)": round(getattr(r, "vrd_kn", 0.0), 2) if r else "-",
+            "As req (cm²)": round(r.required_as_cm2, 2) if r else "-",
             "Armadura": rr.get("bottom_text", "-"),
             "Estribos": rr.get("stirrups_text", "-"),
-            "U. Flexão": round(getattr(r, "bending_utilization", 0.0), 2),
-            "U. Corte": round(r.shear_utilization, 2),
-            "U. Flecha": round(r.deflection_utilization, 2),
-            "U. Fissura": round(r.crack_utilization, 2),
+            "U. Flexão": round(getattr(r, "bending_utilization", 0.0), 2) if r else "-",
+            "U. Corte": round(r.shear_utilization, 2) if r else "-",
+            "U. Flecha": round(r.deflection_utilization, 2) if r else "-",
+            "U. Fissura": round(r.crack_utilization, 2) if r else "-",
         })
     df_beams = pd.DataFrame(rows)
     st.dataframe(
@@ -856,22 +876,41 @@ with tab_vigas:
 
 # ── Pilares ───────────────────────────────────────────────────────────────────
 with tab_pilares:
+    # Editor: set stops_at per column
+    with st.expander("✏️ Editar nível dos pilares (termina em piso / cobertura)"):
+        st.caption("Pilares que terminam na laje de piso não aparecem no nível de Cobertura do quadro.")
+        _n_cols = min(4, len(p.columns))
+        _col_editor_cols = st.columns(_n_cols) if _n_cols > 0 else []
+        for _ci, _col in enumerate(p.columns):
+            _ec = _col_editor_cols[_ci % _n_cols] if _col_editor_cols else st
+            _current = getattr(_col, 'stops_at', 'cobertura')
+            _new = _ec.selectbox(
+                _col.id,
+                options=["cobertura", "piso"],
+                index=0 if _current == "cobertura" else 1,
+                key=f"stops_at_{_col.id}",
+                label_visibility="visible",
+            )
+            if _new != _current:
+                _col.stops_at = _new
+
     rows = []
     for c in p.columns:
         r = c.result
         rows.append({
             "ID": c.id,
+            "Termina em": getattr(c, 'stops_at', 'cobertura').capitalize(),
             "x (m)": round(c.x, 2),
             "y (m)": round(c.y, 2),
             "Secção": c.label(),
             "Forma": c.shape,
             "h (m)": round(c.height_m, 2),
-            "Nsd (kN)": round(r.nsd_kn, 2),
-            "Nrd (kN)": round(r.nrd_kn, 2),
-            "As req (cm²)": round(r.required_as_cm2, 2),
-            "As adot (cm²)": round(r.adopted_as_cm2, 2),
-            "Esbelteza": round(r.slenderness, 1),
-            "Utilização": round(r.utilization, 2),
+            "Nsd (kN)": round(r.nsd_kn, 2) if r else "-",
+            "Nrd (kN)": round(r.nrd_kn, 2) if r else "-",
+            "As req (cm²)": round(r.required_as_cm2, 2) if r else "-",
+            "As adot (cm²)": round(r.adopted_as_cm2, 2) if r else "-",
+            "Esbelteza": round(r.slenderness, 1) if r else "-",
+            "Utilização": round(r.utilization, 2) if r else "-",
         })
     df_cols = pd.DataFrame(rows)
     st.dataframe(

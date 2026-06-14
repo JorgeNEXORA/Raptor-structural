@@ -492,7 +492,17 @@ def draw_column_schedule(project: Project) -> bytes:
                  fontweight='bold', rotation=90, transform=fig.transFigure)
         for i, col in enumerate(cols):
             ax = fig.add_subplot(gs[j, i])
-            _draw_single_column_cell(ax, col, level, j == 0)
+            # Column that stops at piso: show grey "não aplicável" for Cobertura row
+            if level == 'Cobertura' and getattr(col, 'stops_at', 'cobertura') == 'piso':
+                ax.set_facecolor('#e0e0e0')
+                ax.axis('off')
+                ax.text(0.5, 0.5, '—', ha='center', va='center',
+                        transform=ax.transAxes, fontsize=10, color='#666666')
+                if j == 0:
+                    ax.text(0.5, 0.95, col.id, ha='center', va='top',
+                            transform=ax.transAxes, fontsize=7, fontweight='bold')
+            else:
+                _draw_single_column_cell(ax, col, level, j == 0)
 
     for j in range(1, n_lev):
         y = 1 - j / n_lev * 0.93 - 0.03

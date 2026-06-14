@@ -1,6 +1,12 @@
 import csv
 from core.model import Column, Beam, BeamType, SlabPanel, SlabType
 
+_BEAM_TYPE_MAP = {
+    "frame": BeamType.FRAME, "portico": BeamType.FRAME, "pórtico": BeamType.FRAME,
+    "lintel": BeamType.LINTEL, "estore": BeamType.LINTEL,
+    "vct": BeamType.VCT, "travacao": BeamType.VCT, "equilibrio": BeamType.VCT,
+}
+
 _SLAB_TYPE_MAP = {
     "one_way": SlabType.ONE_WAY, "oneway": SlabType.ONE_WAY,
     "laje_simples": SlabType.ONE_WAY, "simples": SlabType.ONE_WAY,
@@ -21,11 +27,14 @@ _COL_ALIASES = {
     "forma": "shape", "circular": "shape",
     "diametro_cm": "diameter_cm", "diâmetro_cm": "diameter_cm",
     "diametro": "diameter_cm", "diâmetro": "diameter_cm",
+    "termina_em": "stops_at", "nivel": "stops_at",
     # vigas
     "no_inicio": "start_node", "nó_inicio": "start_node",
     "no_fim": "end_node", "nó_fim": "end_node",
     "altura_cm": "height_cm",
     "altura_util_cm": "effective_depth_cm", "d_cm": "effective_depth_cm",
+    "altura_max_cm": "max_height_cm", "max_h_cm": "max_height_cm",
+    "portico_id": "portico_id", "tipo_viga": "beam_type",
     # lajes
     "vao_m": "span_m", "vão_m": "span_m", "vao": "span_m",
     "espessura_cm": "thickness_cm", "espessura": "thickness_cm",
@@ -64,18 +73,20 @@ class CSVGeometryImporter:
                 raw_shape = str(row.get("shape", "rectangular")).strip().lower()
                 diam_raw  = str(row.get("diameter_cm", "")).strip()
 
+                raw_stops = str(row.get("stops_at", "cobertura")).strip().lower()
+                stops_at = "piso" if raw_stops in ("piso", "floor", "1") else "cobertura"
                 if diam_raw:
                     diam = float(diam_raw.replace(",", "."))
-                    columns.append(Column(col_id, x, y, diam, diam, h, shape="circular"))
+                    columns.append(Column(col_id, x, y, diam, diam, h, shape="circular", stops_at=stops_at))
                 elif raw_shape in ("circular", "round", "circ", "circle", "redondo"):
                     diam = float(str(row.get("width_cm", width_cm)).replace(",", "."))
-                    columns.append(Column(col_id, x, y, diam, diam, h, shape="circular"))
+                    columns.append(Column(col_id, x, y, diam, diam, h, shape="circular", stops_at=stops_at))
                 else:
                     w = float(str(row.get("width_cm", width_cm)).replace(",", "."))
                     d = float(str(row.get("depth_cm", depth_cm)).replace(",", "."))
                     w = max(w, 25.0)
                     d = max(d, 25.0)
-                    columns.append(Column(col_id, x, y, w, d, h, shape="rectangular"))
+                    columns.append(Column(col_id, x, y, w, d, h, shape="rectangular", stops_at=stops_at))
         return columns
 
 
@@ -104,7 +115,12 @@ class CSVBeamImporter:
                 bw = float(str(row.get("width_cm", width_cm)).replace(",", "."))
                 h = float(str(row.get("height_cm", height_cm)).replace(",", "."))
                 d = float(str(row.get("effective_depth_cm", effective_depth_cm)).replace(",", "."))
-                beams.append(Beam(bid, n1, n2, bw, h, d, span, BeamType.FRAME))
+                raw_bt = str(row.get("beam_type", "frame")).strip().lower()
+                bt = _BEAM_TYPE_MAP.get(raw_bt, BeamType.FRAME)
+                max_h = float(str(row.get("max_height_cm", 0)).replace(",", "."))
+                pid = str(row.get("portico_id", "")).strip()
+                b = Beam(bid, n1, n2, bw, h, d, span, bt, max_height_cm=max_h, portico_id=pid)
+                beams.append(b)
         return beams
 
 
