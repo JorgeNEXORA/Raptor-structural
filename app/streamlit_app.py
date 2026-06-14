@@ -60,6 +60,7 @@ for _key, _val in [
     ("manual_slabs", []),
     ("portico_slab_map", {}),
     ("portico_tramos", []),
+    ("wall_slab_map", {}),
     ("col_config", None),
     ("cols_in_cont_footing", []),
     ("load_cfg", None),
@@ -198,6 +199,7 @@ with st.sidebar:
             "cols_in_cont_footing": st.session_state.get("cols_in_cont_footing", []),
             "portico_slab_map":     st.session_state.get("portico_slab_map", {}),
             "portico_tramos":       st.session_state.get("portico_tramos", []),
+            "wall_slab_map":        st.session_state.get("wall_slab_map", {}),
         }
         _proj_bytes = _save_proj(_proj_now, session_state=_ss_to_save)
         _safe_name  = _proj_now.name.replace(" ", "_").replace("/", "-")
@@ -256,6 +258,7 @@ with st.sidebar:
                             st.session_state.portico_tramos = _ss_saved["portico_tramos"]
                         else:
                             st.session_state.portico_tramos = []
+                        st.session_state.wall_slab_map = _ss_saved.get("wall_slab_map", {})
                         st.session_state["_raptor_loaded_id"] = _up_uid
                         _n_rw = len(st.session_state.manual_retaining_walls)
                         _n_sl = len(st.session_state.manual_slabs)
@@ -441,6 +444,8 @@ with st.sidebar:
                 st.session_state.pop("_prefill_rw", None)
                 st.rerun()
         if st.session_state.manual_retaining_walls:
+            _rw_all_slab_opts = ["—"] + [s.id for s in st.session_state.manual_slabs]
+            _wsmap = st.session_state.get("wall_slab_map", {})
             for _i, rw in enumerate(st.session_state.manual_retaining_walls):
                 _rw_tipo_lbl = "piscina" if getattr(rw, 'wall_type', 'terras') == 'piscina' else "terras"
                 _ca, _cb, _cc = st.columns([5, 1, 1])
@@ -457,6 +462,17 @@ with st.sidebar:
                 if _cc.button("🗑", key=f"del_rw_{_i}", help="Apagar"):
                     st.session_state.manual_retaining_walls.pop(_i)
                     st.rerun()
+                # Lajes que apoiam neste muro
+                _ws_cur = _wsmap.get(rw.id, [])
+                _ws_sel = st.multiselect(
+                    f"Lajes → {rw.id}",
+                    options=[s.id for s in st.session_state.manual_slabs],
+                    default=[s for s in _ws_cur if s in [sl.id for sl in st.session_state.manual_slabs]],
+                    key=f"wsmap_{rw.id}_{_i}",
+                    help="Lajes que apoiam no topo deste muro",
+                )
+                _wsmap[rw.id] = _ws_sel
+            st.session_state.wall_slab_map = _wsmap
 
     # ── Pilares ──────────────────────────────────────────────────────────────
     _cc_cur = st.session_state.get("col_config") or {}
@@ -1248,16 +1264,18 @@ _beam_type_labels = {"frame": "Pórtico", "lintel": "Lintel/Estore", "vct": "VCT
 
 # ── Resumo ────────────────────────────────────────────────────────────────────
 with tab_res:
-    mc = st.columns(9)
-    mc[0].metric("Pilares", len(p.columns))
-    mc[1].metric("Vigas", len(p.beams))
-    mc[2].metric("Lajes", len(p.slabs))
-    mc[3].metric("Sapatas", len(p.footings))
-    mc[4].metric("V. Amarração", len(p.tie_beams))
-    mc[5].metric("Paredes", len(p.walls))
-    mc[6].metric("Muros", len(getattr(p, 'retaining_walls', [])))
-    mc[7].metric("L. Fungi.", len(p.flat_slabs))
-    mc[8].metric("Escadas", len(p.stairs))
+    mc = st.columns(5)
+    mc[0].metric("Pilares",   len(p.columns))
+    mc[1].metric("Vigas",     len(p.beams))
+    mc[2].metric("Lajes",     len(p.slabs))
+    mc[3].metric("Sapatas",   len(p.footings))
+    mc[4].metric("Sap. Corridas", len(getattr(p, 'continuous_footings', []) or []))
+    mc2 = st.columns(5)
+    mc2[0].metric("V. Amarração", len(p.tie_beams))
+    mc2[1].metric("Paredes",  len(p.walls))
+    mc2[2].metric("Muros",    len(getattr(p, 'retaining_walls', []) or []))
+    mc2[3].metric("L. Fungi.", len(p.flat_slabs))
+    mc2[4].metric("Escadas",  len(p.stairs))
 
     if scores:
         st.subheader("Score global")
@@ -1287,56 +1305,81 @@ with tab_res:
 
 # ── Pórticos ──────────────────────────────────────────────────────────────────
 with tab_porticos:
-    # Deduplicate slabs from project + manual (loading restores both)
+    # Deduplicate slabs from project + manual
     _seen_pt = set()
     _piso_slab_ids, _cob_slab_ids = [], []
     for _s in list(p.slabs) + list(st.session_state.manual_slabs):
         if _s.id in _seen_pt:
             continue
         _seen_pt.add(_s.id)
-        if getattr(_s, 'level', 'piso') == 'cobertura':
+        if getattr(_s, "level", "piso") == "cobertura":
             _cob_slab_ids.append(_s.id)
         else:
             _piso_slab_ids.append(_s.id)
-    _all_slab_ids_pt = _piso_slab_ids + _cob_slab_ids
 
-    # Group FRAME beams by portico_id
-    _portico_groups: dict = {}
+    # Beam lookup by portico_id (for results display only)
+    _beam_by_pid: dict = {}
     _other_beams: list = []
     for _b in p.beams:
-        _btype = getattr(_b, 'beam_type', BeamType.FRAME)
-        if _btype == BeamType.FRAME:
-            _pid = (getattr(_b, 'portico_id', '') or '').strip() or _b.id
-            _portico_groups.setdefault(_pid, []).append(_b)
-        else:
+        _bpid = (getattr(_b, "portico_id", "") or "").strip()
+        _btype = getattr(_b, "beam_type", BeamType.FRAME)
+        if _btype == BeamType.FRAME and _bpid:
+            _beam_by_pid.setdefault(_bpid, []).append(_b)
+        elif _btype != BeamType.FRAME:
             _other_beams.append(_b)
 
-    if not _portico_groups:
-        st.info("Nenhum pórtico (viga de tipo FRAME) encontrado no modelo.")
+    # Pórticos defined in sidebar via portico_tramos
+    _pt_tramos_all = st.session_state.get("portico_tramos", [])
+    _pt_groups: dict = {}   # portico_id → [tramo dicts]
+    for _t in _pt_tramos_all:
+        _pt_groups.setdefault(_t["portico_id"], []).append(_t)
+
+    _ptop1, _ptop2 = st.columns([3, 1])
+    _ptop1.caption(
+        f"{len(_pt_groups)} pórtico(s) definido(s).  "
+        "Confirma as lajes de cada pórtico e clica **▶ Recalcular**."
+    )
+    if _ptop2.button("▶ Recalcular", type="primary", key="btn_recalc_portico",
+                     help="Aplica as atribuições e recalcula a estrutura"):
+        st.session_state["_trigger_recalc"] = True
+        st.rerun()
+
+    if not _pt_groups:
+        st.info("Ainda não tens pórticos definidos.  "
+                "Usa o expander **🏗️ Pórticos** na barra lateral para os criar.")
     else:
-        _ptop1, _ptop2 = st.columns([3, 1])
-        _ptop1.caption(
-            "Para cada pórtico seleciona as lajes de **piso** e de **cobertura** que apoiam nele."
-        )
-        if _ptop2.button("▶ Recalcular", type="primary", key="btn_recalc_portico",
-                         help="Aplica as atribuições e recalcula a estrutura"):
-            st.session_state["_trigger_recalc"] = True
-            st.rerun()
         _psmap = st.session_state["portico_slab_map"]
-        for _pid, _pbeams in _portico_groups.items():
-            _bids_in = [_b.id for _b in _pbeams]
-            # Seed from beam.supported_slab_ids on first visit
+        for _pid, _tramos in _pt_groups.items():
+            st.subheader(f"🏗️ {_pid}")
+
+            # Tramo summary table
+            _tr_rows = []
+            for _tr in sorted(_tramos, key=lambda x: x["tramo"]):
+                _cc_txt = (f"{_tr.get('carga_concentrada_kn', 0):.0f} kN"
+                           if _tr.get("carga_concentrada_kn", 0) else "—")
+                _tr_rows.append({
+                    "Tramo": _tr["tramo"],
+                    "P. esq.": _tr.get("pilar_esq", "—") or "—",
+                    "P. dir.": _tr.get("pilar_dir", "—") or "—",
+                    "Dist. (m)": round(_tr.get("span_m", 0), 2),
+                    "Laje esq.": _tr.get("laje_esq_piso", "") or _tr.get("laje_esq_cob", "") or "—",
+                    "Laje dir.": _tr.get("laje_dir_piso", "") or _tr.get("laje_dir_cob", "") or "—",
+                    "Carga conc.": _cc_txt,
+                })
+            st.dataframe(pd.DataFrame(_tr_rows), use_container_width=True, hide_index=True)
+
+            # Seed portico_slab_map from tramos if not yet set
             if _pid not in _psmap:
-                _seeded = []
-                for _b in _pbeams:
-                    for _sid in getattr(_b, 'supported_slab_ids', []):
-                        if _sid not in _seeded:
-                            _seeded.append(_sid)
+                _seeded: list = []
+                for _tr in _tramos:
+                    for _sk in ("laje_esq_piso", "laje_dir_piso",
+                                "laje_esq_cob", "laje_dir_cob"):
+                        _sv = _tr.get(_sk, "")
+                        if _sv and _sv not in _seeded:
+                            _seeded.append(_sv)
                 _psmap[_pid] = _seeded
 
             _cur_sel = _psmap[_pid]
-            st.subheader(f"🏗️ {_pid}")
-            st.caption(f"Vigas: {', '.join(_bids_in)}")
             _lc1, _lc2 = st.columns(2)
             with _lc1:
                 _sel_piso = st.multiselect(
@@ -1354,27 +1397,51 @@ with tab_porticos:
                 )
             _psmap[_pid] = _sel_piso + _sel_cob
 
-            # Beam results for this pórtico
-            _p_rows = []
-            for _b in _pbeams:
-                _r = _b.result
-                _p_rows.append({
-                    "ID": _b.id,
-                    "b×h (cm)": f"{int(_b.width_cm)}×{int(_b.height_cm)}",
-                    "Span (m)": round(_b.span_m, 2),
-                    "Msd (kNm)": round(_r.msd_knm, 2) if _r else "-",
-                    "Vsd (kN)": round(_r.vsd_kn, 2) if _r else "-",
-                    "As req (cm²)": round(_r.required_as_cm2, 2) if _r else "-",
-                    "Armadura": (_b.reinforcement_result or {}).get("bottom_text", "-"),
-                    "U. Flex.": round(getattr(_r, "bending_utilization", 0.0), 2) if _r else "-",
-                    "U. Corte": round(_r.shear_utilization, 2) if _r else "-",
-                })
-            if _p_rows:
+            # Beam results (only if beams explicitly tagged with this portico_id)
+            _pbeams = _beam_by_pid.get(_pid, [])
+            if _pbeams:
+                _p_rows = []
+                for _b in _pbeams:
+                    _r = _b.result
+                    _p_rows.append({
+                        "Viga": _b.id,
+                        "b×h (cm)": f"{int(_b.width_cm)}×{int(_b.height_cm)}",
+                        "Span (m)": round(_b.span_m, 2),
+                        "Msd (kNm)": round(_r.msd_knm, 2) if _r else "—",
+                        "Vsd (kN)": round(_r.vsd_kn, 2) if _r else "—",
+                        "As req (cm²)": round(_r.required_as_cm2, 2) if _r else "—",
+                        "Armadura": (_b.reinforcement_result or {}).get("bottom_text", "—"),
+                        "U. Flex.": round(getattr(_r, "bending_utilization", 0.0), 2) if _r else "—",
+                        "U. Corte": round(_r.shear_utilization, 2) if _r else "—",
+                    })
                 st.dataframe(
                     style_df(pd.DataFrame(_p_rows), ["U. Flex.", "U. Corte"]),
                     use_container_width=True, hide_index=True,
                 )
             st.divider()
+
+    # All FRAME beams without a portico_id assigned
+    _untagged_frame = [_b for _b in p.beams
+                       if getattr(_b, "beam_type", BeamType.FRAME) == BeamType.FRAME
+                       and not (getattr(_b, "portico_id", "") or "").strip()]
+    if _untagged_frame:
+        with st.expander(f"🔩 Vigas de pórtico sem ID atribuído ({len(_untagged_frame)})"):
+            _uf_rows = []
+            for _b in _untagged_frame:
+                _r = _b.result
+                _uf_rows.append({
+                    "Viga": _b.id,
+                    "b×h (cm)": f"{int(_b.width_cm)}×{int(_b.height_cm)}",
+                    "Span (m)": round(_b.span_m, 2),
+                    "Msd (kNm)": round(_r.msd_knm, 2) if _r else "—",
+                    "Vsd (kN)": round(_r.vsd_kn, 2) if _r else "—",
+                    "U. Flex.": round(getattr(_r, "bending_utilization", 0.0), 2) if _r else "—",
+                    "U. Corte": round(_r.shear_utilization, 2) if _r else "—",
+                })
+            st.dataframe(
+                style_df(pd.DataFrame(_uf_rows), ["U. Flex.", "U. Corte"]),
+                use_container_width=True, hide_index=True,
+            )
 
     # VCT + LINTEL beams summary
     if _other_beams:
@@ -1384,13 +1451,13 @@ with tab_porticos:
                 _r = _b.result
                 _ot_rows.append({
                     "ID": _b.id,
-                    "Tipo": _beam_type_labels.get(getattr(_b, 'beam_type', BeamType.FRAME).value, "-"),
+                    "Tipo": _beam_type_labels.get(getattr(_b, "beam_type", BeamType.FRAME).value, "-"),
                     "b×h (cm)": f"{int(_b.width_cm)}×{int(_b.height_cm)}",
                     "Span (m)": round(_b.span_m, 2),
-                    "Msd (kNm)": round(_r.msd_knm, 2) if _r else "-",
-                    "Vsd (kN)": round(_r.vsd_kn, 2) if _r else "-",
-                    "U. Flex.": round(getattr(_r, "bending_utilization", 0.0), 2) if _r else "-",
-                    "U. Corte": round(_r.shear_utilization, 2) if _r else "-",
+                    "Msd (kNm)": round(_r.msd_knm, 2) if _r else "—",
+                    "Vsd (kN)": round(_r.vsd_kn, 2) if _r else "—",
+                    "U. Flex.": round(getattr(_r, "bending_utilization", 0.0), 2) if _r else "—",
+                    "U. Corte": round(_r.shear_utilization, 2) if _r else "—",
                 })
             st.dataframe(
                 style_df(pd.DataFrame(_ot_rows), ["U. Flex.", "U. Corte"]),
