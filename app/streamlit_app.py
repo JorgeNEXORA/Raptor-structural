@@ -670,7 +670,8 @@ with st.sidebar:
         predim_btn = st.button("📐 Pré-dimensionar", use_container_width=True)
 
     st.divider()
-    run_btn = st.button("▶  Correr cálculo", type="primary", use_container_width=True)
+    run_btn = st.button("▶  Correr cálculo", type="primary", use_container_width=True) \
+              or st.session_state.pop("_trigger_recalc", False)
 
     has_project = st.session_state.project is not None
     opt_btn = st.button(
@@ -1161,10 +1162,14 @@ with tab_porticos:
     if not _portico_groups:
         st.info("Nenhum pórtico (viga de tipo FRAME) encontrado no modelo.")
     else:
-        st.caption(
-            "Para cada pórtico seleciona as lajes de **piso** e de **cobertura** que apoiam nele. "
-            "Clica **▶ Correr cálculo** para aplicar."
+        _ptop1, _ptop2 = st.columns([3, 1])
+        _ptop1.caption(
+            "Para cada pórtico seleciona as lajes de **piso** e de **cobertura** que apoiam nele."
         )
+        if _ptop2.button("▶ Recalcular", type="primary", key="btn_recalc_portico",
+                         help="Aplica as atribuições e recalcula a estrutura"):
+            st.session_state["_trigger_recalc"] = True
+            st.rerun()
         _psmap = st.session_state["portico_slab_map"]
         for _pid, _pbeams in _portico_groups.items():
             _bids_in = [_b.id for _b in _pbeams]
