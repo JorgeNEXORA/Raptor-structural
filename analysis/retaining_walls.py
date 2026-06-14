@@ -44,9 +44,15 @@ class RetainingWallAnalyzer:
         # Total height of retained fill above base underside
         H_total = H + ht
 
-        # Horizontal earth force (per metre width)
-        Fh_earth  = 0.5 * Ka * γ * H_total**2
-        Fh_surch  = Ka * q * H_total
+        wall_type = getattr(wall, 'wall_type', 'terras')
+        if wall_type == 'piscina':
+            # Hydrostatic water pressure (Ka=1, γ_w=10 kN/m³, no surcharge)
+            Fh_earth = 0.5 * 1.0 * 10.0 * H_total**2
+            Fh_surch = 0.0
+        else:
+            # Horizontal earth force (per metre width)
+            Fh_earth = 0.5 * Ka * γ * H_total**2
+            Fh_surch = Ka * q * H_total
         Fh = Fh_earth + Fh_surch
 
         # Application heights for overturning (from base underside)
@@ -92,7 +98,10 @@ class RetainingWallAnalyzer:
 
         # EC2 stem reinforcement (at base, cantilever beam)
         # ULS moment: γG=1.35 × Fh moment at base of stem
-        M_stem_uls = 1.35 * (0.5 * Ka * γ * H**2 * H/3.0 + Ka * q * H * H/2.0)
+        if wall_type == 'piscina':
+            M_stem_uls = 1.35 * 0.5 * 10.0 * H**2 * H / 3.0
+        else:
+            M_stem_uls = 1.35 * (0.5 * Ka * γ * H**2 * H/3.0 + Ka * q * H * H/2.0)
         d_stem = st - 0.05   # effective depth (50mm cover)
         As_stem = self._as_required(M_stem_uls, d_stem, 1.0)
 

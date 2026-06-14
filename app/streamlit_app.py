@@ -303,24 +303,32 @@ with st.sidebar:
         with st.form("form_rw", clear_on_submit=True):
             rw1, rw2 = st.columns(2)
             rw_id   = rw1.text_input("ID", "M1")
-            rw_h    = rw1.number_input("Altura ret. (m)", value=2.5, min_value=0.5, step=0.25)
-            rw_st   = rw1.number_input("Espessura topo (cm)", value=25, min_value=15, step=5)
-            rw_bw   = rw1.number_input("Largura base (m)", value=1.5, min_value=0.5, step=0.1)
-            rw_ht   = rw1.number_input("Esp. base (cm)", value=30, min_value=20, step=5)
-            rw_heel = rw2.number_input("Calcanhar (m)", value=0.80, min_value=0.1, step=0.1)
-            rw_toe  = rw2.number_input("Ponta (m)", value=0.45, min_value=0.1, step=0.05)
+            rw_h    = rw1.number_input("Altura do muro (m)", value=2.5, min_value=0.5, step=0.25,
+                                        help="Altura do fuste, sem contar com a sapata")
+            rw_st   = rw1.number_input("Espessura do fuste (cm)", value=25, min_value=15, step=5)
+            rw_tipo = rw1.selectbox("Tipo", ["Suporte de terras", "Piscina"])
+            rw_lado = rw2.selectbox("Lado das terras/água", ["Direito", "Esquerdo"])
             rw_gam  = rw2.number_input("γ solo (kN/m³)", value=18.0, min_value=14.0, step=1.0)
             rw_phi  = rw2.number_input("φ (°)", value=30, min_value=15, max_value=45, step=1)
-            rw_q    = rw2.number_input("Sobrecarga solo (kN/m²)", value=5.0, min_value=0.0, step=1.0)
+            rw_q    = rw2.number_input("Sobrecarga (kN/m²)", value=5.0, min_value=0.0, step=1.0)
             if st.form_submit_button("➕ Adicionar muro"):
+                _rw_H  = rw_h
+                _rw_st_m = rw_st / 100.0
+                _rw_bw   = round(0.60 * _rw_H, 2)
+                _rw_ht   = float(max(25, round(0.10 * _rw_H * 100 / 5) * 5))
+                _rw_heel = round(0.40 * _rw_H, 2)
+                _rw_toe  = max(0.10, round(_rw_bw - _rw_heel - _rw_st_m, 2))
                 st.session_state.manual_retaining_walls.append(
-                    RetainingWall(rw_id, rw_h, rw_st, rw_bw, rw_ht, rw_heel, rw_toe,
-                                  rw_gam, float(rw_phi), rw_q))
+                    RetainingWall(rw_id, _rw_H, rw_st, _rw_bw, _rw_ht, _rw_heel, _rw_toe,
+                                  rw_gam, float(rw_phi), rw_q,
+                                  "piscina" if rw_tipo == "Piscina" else "terras",
+                                  rw_lado.lower()))
                 st.rerun()
         if st.session_state.manual_retaining_walls:
             for rw in st.session_state.manual_retaining_walls:
+                _rw_tipo_lbl = "piscina" if getattr(rw, 'wall_type', 'terras') == 'piscina' else "terras"
                 st.caption(f"{rw.id}: H={rw.height_m}m  e={rw.stem_thickness_cm}cm  "
-                           f"B={rw.base_width_m}m  φ={rw.phi_deg}°")
+                           f"B={rw.base_width_m:.2f}m  φ={rw.phi_deg}°  [{_rw_tipo_lbl}]")
             if st.button("🗑 Limpar muros"):
                 st.session_state.manual_retaining_walls = []
                 st.rerun()

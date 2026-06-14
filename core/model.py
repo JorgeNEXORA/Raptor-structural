@@ -356,6 +356,8 @@ class RetainingWall:
     gamma_soil_kn_m3: float = 18.0  # soil unit weight
     phi_deg: float = 30.0           # angle of internal friction
     surcharge_kn_m2: float = 5.0    # surcharge on retained side
+    wall_type: str = "terras"        # "terras" or "piscina"
+    load_side: str = "direito"       # side where earth/water acts ("esquerdo"/"direito")
     # Location (plan position of base corner)
     x: float = 0.0
     y: float = 0.0
