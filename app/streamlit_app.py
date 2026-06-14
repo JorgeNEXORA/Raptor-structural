@@ -444,7 +444,7 @@ with st.sidebar:
                 st.session_state.pop("_prefill_rw", None)
                 st.rerun()
         if st.session_state.manual_retaining_walls:
-            _rw_all_slab_opts = ["—"] + [s.id for s in st.session_state.manual_slabs]
+            _rw_slab_opts = [s.id for s in st.session_state.manual_slabs]
             _wsmap = st.session_state.get("wall_slab_map", {})
             for _i, rw in enumerate(st.session_state.manual_retaining_walls):
                 _rw_tipo_lbl = "piscina" if getattr(rw, 'wall_type', 'terras') == 'piscina' else "terras"
@@ -462,16 +462,29 @@ with st.sidebar:
                 if _cc.button("🗑", key=f"del_rw_{_i}", help="Apagar"):
                     st.session_state.manual_retaining_walls.pop(_i)
                     st.rerun()
-                # Lajes que apoiam neste muro
-                _ws_cur = _wsmap.get(rw.id, [])
-                _ws_sel = st.multiselect(
-                    f"Lajes → {rw.id}",
-                    options=[s.id for s in st.session_state.manual_slabs],
-                    default=[s for s in _ws_cur if s in [sl.id for sl in st.session_state.manual_slabs]],
-                    key=f"wsmap_{rw.id}_{_i}",
-                    help="Lajes que apoiam no topo deste muro",
+                # Lajes que apoiam neste muro — separadas por lado
+                _ws_entry = _wsmap.get(rw.id, {})
+                # Backward compat: se era lista simples, migrar para dict
+                if isinstance(_ws_entry, list):
+                    _ws_entry = {"direito": _ws_entry, "esquerdo": []}
+                _ws_dir_cur = [s for s in _ws_entry.get("direito", []) if s in _rw_slab_opts]
+                _ws_esq_cur = [s for s in _ws_entry.get("esquerdo", []) if s in _rw_slab_opts]
+                _wsd, _wse  = st.columns(2)
+                _ws_dir_sel = _wsd.multiselect(
+                    f"Lajes lado dir. → {rw.id}",
+                    options=_rw_slab_opts,
+                    default=_ws_dir_cur,
+                    key=f"wsmap_dir_{rw.id}_{_i}",
+                    help="Lajes que apoiam no lado direito do muro",
                 )
-                _wsmap[rw.id] = _ws_sel
+                _ws_esq_sel = _wse.multiselect(
+                    f"Lajes lado esq. → {rw.id}",
+                    options=_rw_slab_opts,
+                    default=_ws_esq_cur,
+                    key=f"wsmap_esq_{rw.id}_{_i}",
+                    help="Lajes que apoiam no lado esquerdo do muro",
+                )
+                _wsmap[rw.id] = {"direito": _ws_dir_sel, "esquerdo": _ws_esq_sel}
             st.session_state.wall_slab_map = _wsmap
 
     # ── Pilares ──────────────────────────────────────────────────────────────
