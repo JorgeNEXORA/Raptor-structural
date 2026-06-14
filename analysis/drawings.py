@@ -1726,6 +1726,19 @@ def draw_column_schedule_dxf(project: 'Project') -> bytes:
             # Cell border
             _dxf_rect(msp, x_cell, y_bot, CELL_W, CELL_H, 'GRELHA', lw=9)
 
+            # Column that stops at piso: grey "—" in Cobertura row
+            if level == 'Cobertura' and getattr(col, 'stops_at', 'cobertura') == 'piso':
+                hatch = msp.add_hatch(dxfattribs={'layer': 'GRELHA', 'color': 254})
+                hatch.set_solid_fill()
+                hatch.paths.add_polyline_path(
+                    [(x_cell, y_bot),(x_cell+CELL_W, y_bot),
+                     (x_cell+CELL_W, y_bot+CELL_H),(x_cell, y_bot+CELL_H)], is_closed=True)
+                cx = x_cell + CELL_W/2
+                _dxf_text(msp, '—', cx, y_bot + CELL_H/2, TH_MD, 'TEXTO', 'CENTER', color=8)
+                if j == 0:
+                    _dxf_text(msp, col.id, cx, y_row + TH_MD*0.3, TH_MD, 'TEXTO', 'CENTER', color=7)
+                continue
+
             # Column cross-section centred in upper 60% of cell
             w = col.width_cm  * CS
             d = col.depth_cm  * CS
