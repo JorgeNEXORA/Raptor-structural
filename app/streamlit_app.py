@@ -10,7 +10,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from core.model import Column, ContinuousFooting, FlatSlab, Project, RetainingWall, ShearWall, SlabPanel, SlabType, StairSlab
+from core.model import BeamType, Column, ContinuousFooting, FlatSlab, Project, RetainingWall, ShearWall, SlabPanel, SlabType, StairSlab
 from analysis.predim import ColumnPreDimensioner
 from config.loads import (
     LoadConfigurator, LAJE, ISOLAMENTO, ACABAMENTO_PISO, ACABAMENTO_COB,
@@ -58,6 +58,7 @@ for _key, _val in [
     ("manual_stairs", []),
     ("manual_retaining_walls", []),
     ("manual_slabs", []),
+    ("portico_slab_map", {}),
     ("load_cfg", None),
 ]:
     if _key not in st.session_state:
@@ -565,6 +566,28 @@ if run_btn:
                 if _ms.id not in _existing_ids:
                     slabs.append(_ms)
                     _existing_ids.add(_ms.id)
+            # Apply pórtico→slab assignments: update slab.support_beam_ids and beam.supported_slab_ids
+            _psmap = st.session_state.get("portico_slab_map", {})
+            if _psmap:
+                _bid_by_portico = {}
+                for _b in beams:
+                    _pid = getattr(_b, 'portico_id', '') or _b.id
+                    if getattr(_b, 'beam_type', None) == BeamType.FRAME:
+                        _bid_by_portico.setdefault(_pid, []).append(_b.id)
+                _slab_by_id = {s.id: s for s in slabs}
+                for _pid, _slab_ids in _psmap.items():
+                    _beam_ids_in = _bid_by_portico.get(_pid, [])
+                    for _sid in _slab_ids:
+                        _s = _slab_by_id.get(_sid)
+                        if _s:
+                            for _bid in _beam_ids_in:
+                                if _bid not in _s.support_beam_ids:
+                                    _s.support_beam_ids.append(_bid)
+                    for _b in beams:
+                        if _b.id in _beam_ids_in:
+                            for _sid in _slab_ids:
+                                if _sid not in _b.supported_slab_ids:
+                                    _b.supported_slab_ids.append(_sid)
             project = Project(
                 name=project_name,
                 location=location,
@@ -742,8 +765,10 @@ if scores:
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_res, tab_vigas, tab_pilares, tab_lajes, tab_sapatas, tab_paredes, tab_muros, tab_fungi, tab_esc, tab_alertas, tab_planta = st.tabs([
+tab_res, tab_porticos, tab_vfund, tab_vigas, tab_pilares, tab_lajes, tab_sapatas, tab_paredes, tab_muros, tab_fungi, tab_esc, tab_alertas, tab_planta = st.tabs([
     "📊 Resumo",
+    "🏗️ Pórticos",
+    "🔗 V. Fundação",
     "🔩 Vigas",
     "🏛️ Pilares",
     "⬜ Lajes",
@@ -755,6 +780,8 @@ tab_res, tab_vigas, tab_pilares, tab_lajes, tab_sapatas, tab_paredes, tab_muros,
     "⚠️ Alertas",
     "🗺️ Planta",
 ])
+
+_beam_type_labels = {"frame": "Pórtico", "lintel": "Lintel/Estore", "vct": "VCT"}
 
 # ── Resumo ────────────────────────────────────────────────────────────────────
 with tab_res:
@@ -795,6 +822,143 @@ with tab_res:
         ]
         st.dataframe(pd.DataFrame(tie_rows), use_container_width=True, hide_index=True)
 
+# ── Pórticos ──────────────────────────────────────────────────────────────────
+with tab_porticos:
+    _all_slab_ids = [s.id for s in p.slabs] + [s.id for s in st.session_state.manual_slabs]
+
+    # Group FRAME beams by portico_id
+    _portico_groups: dict = {}
+    _other_beams: list = []
+    for _b in p.beams:
+        _btype = getattr(_b, 'beam_type', BeamType.FRAME)
+        if _btype == BeamType.FRAME:
+            _pid = (getattr(_b, 'portico_id', '') or '').strip() or _b.id
+            _portico_groups.setdefault(_pid, []).append(_b)
+        else:
+            _other_beams.append(_b)
+
+    if not _portico_groups:
+        st.info("Nenhum pórtico (viga de tipo FRAME) encontrado no modelo.")
+    else:
+        st.caption(
+            "Atribui as lajes que descarregam em cada pórtico. "
+            "As associações são aplicadas automaticamente ao clicar **▶ Correr cálculo**."
+        )
+        _psmap = st.session_state["portico_slab_map"]
+        for _pid, _pbeams in _portico_groups.items():
+            _bids_in = [_b.id for _b in _pbeams]
+            # Seed from beam.supported_slab_ids on first visit
+            if _pid not in _psmap:
+                _seeded = []
+                for _b in _pbeams:
+                    for _sid in getattr(_b, 'supported_slab_ids', []):
+                        if _sid not in _seeded:
+                            _seeded.append(_sid)
+                _psmap[_pid] = _seeded
+
+            st.subheader(f"🏗️ {_pid}")
+            _c1, _c2 = st.columns([2, 1])
+            with _c1:
+                _sel = st.multiselect(
+                    "Lajes que descarregam neste pórtico",
+                    options=_all_slab_ids,
+                    default=[s for s in _psmap[_pid] if s in _all_slab_ids],
+                    key=f"pmap_{_pid}",
+                    help="Seleciona todos os painéis de laje (piso e cobertura) que têm apoio neste pórtico.",
+                )
+                _psmap[_pid] = _sel
+            with _c2:
+                st.caption(f"Vigas: {', '.join(_bids_in)}")
+
+            # Beam results for this pórtico
+            _p_rows = []
+            for _b in _pbeams:
+                _r = _b.result
+                _p_rows.append({
+                    "ID": _b.id,
+                    "b×h (cm)": f"{int(_b.width_cm)}×{int(_b.height_cm)}",
+                    "Span (m)": round(_b.span_m, 2),
+                    "Msd (kNm)": round(_r.msd_knm, 2) if _r else "-",
+                    "Vsd (kN)": round(_r.vsd_kn, 2) if _r else "-",
+                    "As req (cm²)": round(_r.required_as_cm2, 2) if _r else "-",
+                    "Armadura": (_b.reinforcement_result or {}).get("bottom_text", "-"),
+                    "U. Flex.": round(getattr(_r, "bending_utilization", 0.0), 2) if _r else "-",
+                    "U. Corte": round(_r.shear_utilization, 2) if _r else "-",
+                })
+            if _p_rows:
+                st.dataframe(
+                    style_df(pd.DataFrame(_p_rows), ["U. Flex.", "U. Corte"]),
+                    use_container_width=True, hide_index=True,
+                )
+            st.divider()
+
+    # VCT + LINTEL beams summary
+    if _other_beams:
+        with st.expander(f"🔩 Outros tipos de viga ({len(_other_beams)}) — Lintéis / VCT"):
+            _ot_rows = []
+            for _b in _other_beams:
+                _r = _b.result
+                _ot_rows.append({
+                    "ID": _b.id,
+                    "Tipo": _beam_type_labels.get(getattr(_b, 'beam_type', BeamType.FRAME).value, "-"),
+                    "b×h (cm)": f"{int(_b.width_cm)}×{int(_b.height_cm)}",
+                    "Span (m)": round(_b.span_m, 2),
+                    "Msd (kNm)": round(_r.msd_knm, 2) if _r else "-",
+                    "Vsd (kN)": round(_r.vsd_kn, 2) if _r else "-",
+                    "U. Flex.": round(getattr(_r, "bending_utilization", 0.0), 2) if _r else "-",
+                    "U. Corte": round(_r.shear_utilization, 2) if _r else "-",
+                })
+            st.dataframe(
+                style_df(pd.DataFrame(_ot_rows), ["U. Flex.", "U. Corte"]),
+                use_container_width=True, hide_index=True,
+            )
+
+# ── Vigas de Fundação ─────────────────────────────────────────────────────────
+with tab_vfund:
+    _cont_footings = getattr(p, 'continuous_footings', []) or []
+
+    if p.tie_beams:
+        st.subheader("🔗 Vigas de amarração / equilíbrio (CB.)")
+        st.caption("Vigas de amarração geradas automaticamente entre sapatas excêntricas (EC2 §9.10.2 — força de tração mínima).")
+        _tb_rows = []
+        for _tb in p.tie_beams:
+            _tb_rows.append({
+                "ID": _tb.id,
+                "Sapata A": _tb.start_footing_id,
+                "Sapata B": _tb.end_footing_id,
+                "b×h (cm)": f"{int(_tb.width_cm)}×{int(_tb.height_cm)}",
+                "Span (m)": round(_tb.span_m, 2),
+                "T (kN)": round(_tb.tie_force_kn, 2),
+                "As req (cm²)": round(_tb.required_as_cm2, 2),
+                "Adotar": _tb.adopted_bars,
+            })
+        st.dataframe(pd.DataFrame(_tb_rows), use_container_width=True, hide_index=True)
+    else:
+        st.info("Sem vigas de amarração geradas (não há sapatas excêntricas ou o modelo não gerou CB.).")
+
+    if _cont_footings:
+        st.divider()
+        st.subheader("📐 Sapatas corridas")
+        _cf_rows = []
+        for _cf in _cont_footings:
+            _cr = _cf.result
+            _cf_rows.append({
+                "ID": _cf.id,
+                "Muro": _cf.related_wall_id,
+                "Larg (cm)": _cf.width_cm,
+                "Alt (cm)": _cf.height_cm,
+                "Comp (m)": round(_cf.length_m, 2),
+                "σ (kPa)": round(_cr.soil_stress_mpa * 1000, 1) if _cr else "-",
+                "U. Solo": round(_cr.soil_utilization, 2) if _cr else "-",
+                "As (cm²/m)": round(_cr.required_as_cm2_m, 2) if _cr else "-",
+                "U. Flex.": round(_cr.bending_utilization, 2) if _cr else "-",
+                "U. Corte": round(_cr.shear_utilization, 2) if _cr else "-",
+            })
+        st.dataframe(
+            style_df(pd.DataFrame(_cf_rows), ["U. Solo", "U. Flex.", "U. Corte"]),
+            use_container_width=True, hide_index=True,
+        )
+
 # ── Vigas ─────────────────────────────────────────────────────────────────────
 with tab_vigas:
     # Editor: set max_height_cm per beam (for caixa de estore)
@@ -812,7 +976,6 @@ with tab_vigas:
             if _new_mh != _cur_mh:
                 _beam.max_height_cm = _new_mh
 
-    _beam_type_labels = {"frame": "Pórtico", "lintel": "Lintel/Estore", "vct": "VCT"}
     rows = []
     for b in p.beams:
         r = b.result
