@@ -166,6 +166,116 @@ def _rebuild_psmap(pt_list: list, ss) -> None:
     ss.portico_slab_map = _m
 
 
+def _draw_portico(pid: str, tramos: list, project_columns: list):
+    """Return a matplotlib Figure with a 2D elevation drawing of a pórtico."""
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    tramos_s = sorted(tramos, key=lambda x: x["tramo"])
+
+    # Build column x-positions from cumulative spans
+    col_x: dict = {}
+    x = 0.0
+    for tr in tramos_s:
+        pe = (tr.get("pilar_esq") or "").strip()
+        pd_id = (tr.get("pilar_dir") or "").strip()
+        if pe and pe not in col_x:
+            col_x[pe] = x
+        x += float(tr.get("span_m") or 5.0)
+        if pd_id and pd_id not in col_x:
+            col_x[pd_id] = x
+
+    total_w = x
+    # Column heights from project
+    col_h_map = {c.id: float(c.height_m) for c in project_columns}
+
+    # Default floor height: first tramo with altura_m, else 3.0
+    default_h = 3.0
+    for tr in tramos_s:
+        if tr.get("altura_m"):
+            default_h = float(tr["altura_m"])
+            break
+
+    def _col_h(col_id):
+        return col_h_map.get(col_id, default_h)
+
+    # Visual dimensions (scale: metres)
+    COL_W = 0.25   # display column width
+    BEAM_H_MIN = 0.25  # minimum beam display height
+
+    fig_w = max(8.0, total_w * 1.1 + 2.0)
+    fig_h = max(4.0, default_h * 1.2 + 1.5)
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    fig.patch.set_facecolor("#0e1117")
+    ax.set_facecolor("#0e1117")
+
+    # Ground hatch
+    ax.axhline(0, color="#aaaaaa", linewidth=1.2)
+    for _gx in [_cx - COL_W / 2 for _cx in col_x.values()]:
+        for _gi in range(4):
+            ax.plot([_gx + _gi * 0.12, _gx + _gi * 0.12 - 0.10],
+                    [0, -0.12], color="#aaaaaa", linewidth=0.8)
+
+    # Draw columns
+    for col_id, cx in col_x.items():
+        ch = _col_h(col_id)
+        rect = mpatches.FancyBboxPatch(
+            (cx - COL_W / 2, 0), COL_W, ch,
+            boxstyle="square,pad=0", linewidth=1.0,
+            edgecolor="#60a5fa", facecolor="#1d4ed8", zorder=3
+        )
+        ax.add_patch(rect)
+        ax.text(cx, -0.22, col_id, ha="center", va="top",
+                color="#93c5fd", fontsize=7.5, fontweight="bold")
+        # Height annotation left of first column
+        if cx == min(col_x.values()):
+            ax.annotate("", xy=(-0.5, ch), xytext=(-0.5, 0),
+                        arrowprops=dict(arrowstyle="<->", color="#aaaaaa", lw=0.9))
+            ax.text(-0.65, ch / 2, f"{ch:.2f} m", ha="right", va="center",
+                    color="#aaaaaa", fontsize=7, rotation=90)
+
+    # Draw beams
+    for tr in tramos_s:
+        pe = (tr.get("pilar_esq") or "").strip()
+        pd_id = (tr.get("pilar_dir") or "").strip()
+        if pe not in col_x or pd_id not in col_x:
+            continue
+        x1, x2 = col_x[pe], col_x[pd_id]
+        beam_top = max(_col_h(pe), _col_h(pd_id))
+        bh_cm = float(tr.get("secao_h_cm") or 40)
+        bb_cm = float(tr.get("secao_b_cm") or 25)
+        bh_m = max(bh_cm / 100, BEAM_H_MIN)
+        span = float(tr.get("span_m") or (x2 - x1))
+        mid_x = (x1 + x2) / 2
+
+        rect = mpatches.FancyBboxPatch(
+            (x1, beam_top - bh_m), x2 - x1, bh_m,
+            boxstyle="square,pad=0", linewidth=1.0,
+            edgecolor="#4ade80", facecolor="#15803d", zorder=3
+        )
+        ax.add_patch(rect)
+
+        # Span dimension line above beam
+        y_dim = beam_top + 0.18
+        ax.annotate("", xy=(x2, y_dim), xytext=(x1, y_dim),
+                    arrowprops=dict(arrowstyle="<->", color="#facc15", lw=0.8))
+        ax.text(mid_x, y_dim + 0.08, f"{span:.2f} m",
+                ha="center", va="bottom", color="#facc15", fontsize=7.5)
+
+        # Tramo label + section inside beam
+        ax.text(mid_x, beam_top - bh_m / 2 + 0.02,
+                f"T{tr['tramo']}\n{int(bb_cm)}×{int(bh_cm)}",
+                ha="center", va="center", color="white", fontsize=7, fontweight="bold")
+
+    ax.set_xlim(-1.5, total_w + 1.0)
+    ax.set_ylim(-0.6, default_h + 1.0)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title(pid, color="white", fontsize=11, fontweight="bold", pad=6)
+    plt.tight_layout(pad=0.4)
+    return fig
+
+
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🏗️ Raptor")
@@ -1426,6 +1536,14 @@ with tab_porticos:
                     "Carga conc.": _cc_txt,
                 })
             st.dataframe(pd.DataFrame(_tr_rows), use_container_width=True, hide_index=True)
+
+            # Pórtico elevation drawing
+            try:
+                _pt_fig = _draw_portico(_pid, _tramos, p.columns)
+                st.pyplot(_pt_fig, use_container_width=True)
+                plt.close(_pt_fig)
+            except Exception as _pt_draw_err:
+                st.caption(f"Desenho indisponível: {_pt_draw_err}")
 
             # Per-tramo section editor
             with st.expander(f"✏️ Secção das vigas (b×h) — {_pid}"):
