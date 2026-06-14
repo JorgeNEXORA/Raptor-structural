@@ -1388,6 +1388,30 @@ with tab_porticos:
         st.session_state["_trigger_recalc"] = True
         st.rerun()
 
+    # Global beam section editor — always visible after calculation
+    if p.beams:
+        _bov_pg = st.session_state.get("beam_overrides", {})
+        with st.expander(f"✏️ Editar secção das vigas (b×h) — {len(p.beams)} viga(s)"):
+            st.caption("Altera b e h de qualquer viga. Clica **▶ Recalcular** para aplicar.")
+            _hc0, _hc1, _hc2 = st.columns([0.40, 0.30, 0.30])
+            _hc0.markdown("**Viga**"); _hc1.markdown("**b (cm)**"); _hc2.markdown("**h (cm)**")
+            for _pgb in p.beams:
+                _pgov = _bov_pg.get(_pgb.id, {})
+                _pgb_b = float(_pgov.get("width_cm",  _pgb.width_cm))
+                _pgb_h = float(_pgov.get("height_cm", _pgb.height_cm))
+                _pgc0, _pgc1, _pgc2 = st.columns([0.40, 0.30, 0.30])
+                _pgc0.markdown(f"**{_pgb.id}** — atual {int(_pgb.width_cm)}×{int(_pgb.height_cm)} cm")
+                _new_pgb = _pgc1.number_input(
+                    "b", value=_pgb_b, min_value=10.0, max_value=150.0, step=5.0,
+                    key=f"pg_b_{_pgb.id}", label_visibility="collapsed"
+                )
+                _new_pgh = _pgc2.number_input(
+                    "h", value=_pgb_h, min_value=10.0, max_value=200.0, step=5.0,
+                    key=f"pg_h_{_pgb.id}", label_visibility="collapsed"
+                )
+                _bov_pg[_pgb.id] = {"width_cm": _new_pgb, "height_cm": _new_pgh}
+            st.session_state.beam_overrides = _bov_pg
+
     if not _pt_groups:
         st.info("Ainda não tens pórticos definidos.  "
                 "Usa o expander **🏗️ Pórticos** na barra lateral para os criar.")
@@ -1412,21 +1436,6 @@ with tab_porticos:
                     "Carga conc.": _cc_txt,
                 })
             st.dataframe(pd.DataFrame(_tr_rows), use_container_width=True, hide_index=True)
-
-            # Edit altura_m per tramo (useful for tramos created before this field existed)
-            with st.expander(f"✏️ Editar alturas de piso — {_pid}"):
-                st.caption("Altura do piso em cada tramo (m). Clica **▶ Recalcular** para aplicar.")
-                for _tr in sorted(_tramos, key=lambda x: x["tramo"]):
-                    _cur_alt = float(_tr.get("altura_m") or 0.0)
-                    _default_alt = _cur_alt if _cur_alt >= 1.0 else 2.70
-                    _new_alt = st.number_input(
-                        f"Tramo {_tr['tramo']}  {_tr.get('pilar_esq','?')} → {_tr.get('pilar_dir','?')}  (m)",
-                        value=_default_alt, min_value=1.0, max_value=10.0, step=0.05,
-                        key=f"alt_tr_{_pid}_{_tr['tramo']}",
-                    )
-                    _tr["altura_m"] = _new_alt
-                # Write back to session_state so the change persists
-                st.session_state.portico_tramos = _pt_tramos_all
 
             # Seed portico_slab_map from tramos if not yet set
             if _pid not in _psmap:
@@ -1460,30 +1469,6 @@ with tab_porticos:
             # Beam results (only if beams explicitly tagged with this portico_id)
             _pbeams = _beam_by_pid.get(_pid, [])
             if _pbeams:
-                # b×h editor per beam
-                _bov_pt = st.session_state.get("beam_overrides", {})
-                with st.expander(f"✏️ Editar secção das vigas (b×h) — {_pid}"):
-                    st.caption("Altera b×h. Clica **▶ Recalcular** para aplicar.")
-                    for _pb in _pbeams:
-                        _pov = _bov_pt.get(_pb.id, {})
-                        _pb_b = float(_pov.get("width_cm",  _pb.width_cm))
-                        _pb_h = float(_pov.get("height_cm", _pb.height_cm))
-                        _plbl, _pc1, _pc2 = st.columns([0.35, 0.32, 0.33])
-                        _plbl.markdown(f"**{_pb.id}** ({int(_pb.width_cm)}×{int(_pb.height_cm)} cm)")
-                        _pb_b_new = _pc1.number_input(
-                            "b (cm)", value=_pb_b, min_value=10.0, max_value=150.0, step=5.0,
-                            key=f"povb_b_{_pid}_{_pb.id}", label_visibility="collapsed"
-                        )
-                        _pc1.caption("b")
-                        _pb_h_new = _pc2.number_input(
-                            "h (cm)", value=_pb_h, min_value=10.0, max_value=200.0, step=5.0,
-                            key=f"povb_h_{_pid}_{_pb.id}", label_visibility="collapsed"
-                        )
-                        _pc2.caption("h")
-                        _bov_pt[_pb.id] = {"width_cm": _pb_b_new, "height_cm": _pb_h_new}
-                    st.session_state.beam_overrides = _bov_pt
-
-                _p_rows = []
                 for _b in _pbeams:
                     _r = _b.result
                     _p_rows.append({
