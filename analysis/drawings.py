@@ -770,10 +770,38 @@ def _beam_stirrup_design(vsd_kn: float, d_cm: float):
     return 10, 10
 
 
+def _beam_frame_direction(beams, col_map) -> str:
+    """Return 'X' or 'Y' for the primary axis of a beam group."""
+    dx_tot = dy_tot = 0.0
+    for b in beams:
+        c1, c2 = col_map.get(b.start_node), col_map.get(b.end_node)
+        if c1 and c2:
+            dx_tot += abs(c2.x - c1.x)
+            dy_tot += abs(c2.y - c1.y)
+    return 'X' if dx_tot >= dy_tot else 'Y'
+
+
 def _group_beams_into_frames(beams, col_map):
-    """Group beams into frames (pórticos) by collinear alignment.
-    Returns list of (direction, sorted_beam_list).
+    """Group beams into frames (pórticos).
+    Uses portico_id if set, otherwise groups by collinear alignment.
+    Returns list of (label, direction, sorted_beam_list).
     """
+    beams_with_pid = [b for b in beams if getattr(b, 'portico_id', '')]
+    if beams_with_pid:
+        pid_groups: dict = {}
+        for b in beams:
+            pid = getattr(b, 'portico_id', '') or '_auto'
+            pid_groups.setdefault(pid, []).append(b)
+        result = []
+        for pid in sorted(pid_groups.keys()):
+            grp = pid_groups[pid]
+            d = _beam_frame_direction(grp, col_map)
+            def _bsort(b, _d=d):
+                c = col_map.get(b.start_node)
+                return (c.x if _d == 'X' else c.y) if c else 0
+            result.append((pid, d, sorted(grp, key=_bsort)))
+        return result
+
     TOL_DEG = 20
     TOL_POS = 0.5
 
@@ -804,7 +832,8 @@ def _group_beams_into_frames(beams, col_map):
             def sort_key(b, d=direction):
                 c1 = col_map[b.start_node]
                 return c1.x if d == 'X' else c1.y
-            result.append((direction, sorted(groups[key], key=sort_key)))
+            # label is auto-generated; direction is explicit
+            result.append((direction, direction, sorted(groups[key], key=sort_key)))
         return result
 
     return group_by_transverse(x_beams, 'X') + group_by_transverse(y_beams, 'Y')
@@ -839,7 +868,7 @@ def _draw_beam_cross_section(ax, beam, n_bot, dia_bot, x_c, y_bot, width, height
             fill=True, facecolor='black', zorder=6))
 
 
-def _draw_frame_elevation(ax, direction, beams, col_map, frame_num):
+def _draw_frame_elevation(ax, direction, beams, col_map, frame_num, label=None):
     """Draw full pórtico: longitudinal elevation + cross-sections above each span."""
     ax.set_facecolor('white')
     ax.axis('off')
@@ -1073,7 +1102,8 @@ def _draw_frame_elevation(ax, direction, beams, col_map, frame_num):
     cv = c0.y if direction == 'X' else c0.x
     al = 'Y' if direction == 'X' else 'X'
     msds = [f'{(b.result.msd_knm if b.result else 0):.0f}' for b in beams]
-    title = (f'Pórtico {frame_num}    ({al}={cv:.2f}m)    Escala 1:50    '
+    pid_part = label if (label and label not in ('X', 'Y')) else f'Pórtico {frame_num}'
+    title = (f'{pid_part}    ({al}={cv:.2f}m)    Escala 1:50    '
              f'Vigas {int(beams[0].width_cm)}×{int(beams[0].height_cm)} cm    '
              f'Msd=[{", ".join(msds)}] kNm')
     ax.set_title(title, fontsize=8.5, fontweight='bold', loc='left', pad=6)
@@ -1114,9 +1144,9 @@ def draw_beam_schedule(project: Project) -> bytes:
                   top=0.97, bottom=0.01,
                   hspace=0.35)
 
-    for idx, (direction, bms) in enumerate(frames):
+    for idx, (label, direction, bms) in enumerate(frames):
         ax = fig.add_subplot(gs[idx, 0])
-        _draw_frame_elevation(ax, direction, bms, col_map, idx + 1)
+        _draw_frame_elevation(ax, direction, bms, col_map, idx + 1, label=label)
 
     return _fig_to_bytes(fig, dpi=180)
 
@@ -1172,7 +1202,7 @@ def _dxf_dim_linear(msp, x0, x1, y_dim, tick_h, txt, layer, h_txt):
     _dxf_text(msp, txt, (x0+x1)/2, y_dim + tick_h*0.7, h_txt, layer, 'CENTER')
 
 
-def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off):
+def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off, label=None):
     """Draw one pórtico frame into DXF model space at vertical offset y_off."""
     # ── column positions ──────────────────────────────────────────────────────
     col_pos, col_obj = {}, {}
@@ -1382,7 +1412,8 @@ def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off):
     al = 'Y' if direction == 'X' else 'X'
     x0_fr = col_pos[sorted_col_ids[0]]
     msds  = [f'{(b.result.msd_knm if b.result else 0):.0f}' for b in beams]
-    title = (f'PORTICO {frame_num}  ({al}={cv:.2f}m)  1:50  '
+    pid_part = label if (label and label not in ('X', 'Y')) else f'PORTICO {frame_num}'
+    title = (f'{pid_part}  ({al}={cv:.2f}m)  1:50  '
              f'Vigas {int(beams[0].width_cm)}x{int(beams[0].height_cm)} cm  '
              f'Msd=[{", ".join(msds)}] kNm')
     _dxf_text(msp, title, x0_fr, beam_top + cst + TH_LG*1.2, TH_LG,
@@ -1435,12 +1466,9 @@ def draw_beam_schedule_dxf(project: 'Project') -> bytes:
 
     # Compute Y-offset per frame (stack downward, starting at y=-1.5)
     y_cursor = -1.5
-    for idx, (direction, bms) in enumerate(frames):
+    for idx, (label, direction, bms) in enumerate(frames):
         bh_i  = bms[0].height_cm / 100
-        ch_i  = col_map[list({b.start_node for b in bms} |
-                              {b.end_node   for b in bms}
-                              & col_map.keys())].height_m \
-                if False else bms[0].height_cm / 100 * 4   # fallback
+        ch_i  = bh_i * 4   # fallback
         # Get actual col height
         for b in bms:
             for nid in [b.start_node, b.end_node]:
@@ -1456,7 +1484,7 @@ def draw_beam_schedule_dxf(project: 'Project') -> bytes:
         cs_h_i = bh_i * 3.5
         frame_h = cst_i + bh_i + csb_i + cs_h_i + 0.60   # total Y extent
 
-        _dxf_frame_elevation(msp, direction, bms, col_map, idx + 1, y_cursor)
+        _dxf_frame_elevation(msp, direction, bms, col_map, idx + 1, y_cursor, label=label)
         y_cursor -= (frame_h + 2.0)   # 2m spacing between frames
 
     out = io.StringIO()
