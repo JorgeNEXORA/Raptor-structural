@@ -2259,3 +2259,399 @@ def draw_retaining_wall_schedule_dxf(project: 'Project') -> bytes:
     _dxf_title_block(msp, project, 'MUROS E SAPATAS CORRIDAS', 'S/Escala', 0, ry2 - 0.3)
     out = io.StringIO(); doc.write(out)
     return out.getvalue().encode('utf-8')
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PORMENORES DE CONSTRUÇÃO — DXF detail drawings  (1 DXF unit = 1 cm)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _pick_bars(as_cm2_per_m: float) -> str:
+    """Select bar+spacing label for given As (cm²/m)."""
+    if as_cm2_per_m <= 0:
+        return "Ø12@20"
+    for dia in [10, 12, 16, 20, 25]:
+        a_bar = math.pi * (dia / 10.0) ** 2 / 4.0
+        sp = a_bar / as_cm2_per_m * 100.0
+        if 10.0 <= sp <= 25.0:
+            return f"Ø{dia}@{sp:.0f}"
+    a25 = math.pi * 6.25 / 4.0
+    sp = max(7.5, a25 / as_cm2_per_m * 100.0)
+    return f"Ø25@{sp:.0f}"
+
+
+def _det_new_doc():
+    """New DXF document in centimetres."""
+    try:
+        import ezdxf
+    except ImportError:
+        return None, None, None
+    doc = ezdxf.new('R2010')
+    doc.header['$INSUNITS'] = 5      # cm
+    doc.header['$MEASUREMENT'] = 1
+    if 'DASHED' not in doc.linetypes:
+        doc.linetypes.add('DASHED', pattern=[3.0, -1.5])
+    for lname, color in [('BETAO', 7), ('ARMADURA', 1), ('COTAS', 5),
+                          ('TEXTO', 7), ('EIXO', 4), ('HATCH', 254)]:
+        if lname not in doc.layers:
+            doc.layers.add(lname, color=color)
+    msp = doc.modelspace()
+    return doc, msp, ezdxf
+
+
+def _det_rect(msp, x, y, w, h, layer='BETAO', lw=25):
+    pts = [(x, y), (x+w, y), (x+w, y+h), (x, y+h), (x, y)]
+    msp.add_lwpolyline(pts, dxfattribs={'layer': layer, 'lineweight': lw})
+
+
+def _det_line(msp, x1, y1, x2, y2, layer='BETAO', lw=13):
+    msp.add_line((x1, y1), (x2, y2), dxfattribs={'layer': layer, 'lineweight': lw})
+
+
+def _det_txt(msp, txt, x, y, h=4.0, layer='TEXTO', align='LEFT'):
+    from ezdxf.enums import TextEntityAlignment
+    amap = {'LEFT': TextEntityAlignment.LEFT,
+            'CENTER': TextEntityAlignment.MIDDLE_CENTER,
+            'RIGHT': TextEntityAlignment.MIDDLE_RIGHT}
+    t = msp.add_text(str(txt), dxfattribs={'height': h, 'layer': layer})
+    t.set_placement((x, y), align=amap.get(align, TextEntityAlignment.LEFT))
+
+
+def _det_dim_h(msp, x0, x1, y_base, label, h_txt=3.0, gap=6.0):
+    """Horizontal dimension below y_base."""
+    yd = y_base - gap
+    _det_line(msp, x0, y_base, x0, yd - 2, 'COTAS', 13)
+    _det_line(msp, x1, y_base, x1, yd - 2, 'COTAS', 13)
+    _det_line(msp, x0, yd, x1, yd, 'COTAS', 13)
+    msp.add_line((x0, yd), (x0 + min(3, (x1-x0)*0.1), yd + 1.0), dxfattribs={'layer': 'COTAS'})
+    msp.add_line((x1, yd), (x1 - min(3, (x1-x0)*0.1), yd + 1.0), dxfattribs={'layer': 'COTAS'})
+    _det_txt(msp, label, (x0+x1)/2, yd - h_txt*1.4, h_txt, 'COTAS', 'CENTER')
+
+
+def _det_dim_v(msp, x_base, y0, y1, label, h_txt=3.0, gap=6.0):
+    """Vertical dimension to the right of x_base."""
+    xd = x_base + gap
+    _det_line(msp, x_base, y0, xd + 2, y0, 'COTAS', 13)
+    _det_line(msp, x_base, y1, xd + 2, y1, 'COTAS', 13)
+    _det_line(msp, xd, y0, xd, y1, 'COTAS', 13)
+    _det_txt(msp, label, xd + 2, (y0+y1)/2, h_txt, 'COTAS')
+
+
+def draw_footing_detail_dxf(project: 'Project') -> bytes:
+    """
+    DXF construction detail — isolated footings.
+    One plan view + section A-A per unique (a×b×h) size.
+    Scale notation 1:50. Units: cm.
+    """
+    doc, msp, _ = _det_new_doc()
+    if doc is None:
+        return b""
+    footings = [f for f in project.footings if f.result]
+    if not footings:
+        _det_txt(msp, "Sem sapatas com resultado de calculo.", 0, 0, 6)
+        out = io.StringIO(); doc.write(out); return out.getvalue().encode('utf-8')
+
+    col_map = {c.id: c for c in project.columns}
+    seen: dict = {}
+    for ft in footings:
+        key = (round(ft.width_a_cm), round(ft.width_b_cm), round(ft.height_cm))
+        if key not in seen:
+            seen[key] = ft
+
+    X0 = 0.0
+    DG = 25.0    # detail gap
+    PSG = 20.0   # plan-to-section gap
+
+    for (a, b, h), ft in seen.items():
+        col = col_map.get(ft.related_column_id)
+        cw = col.width_cm if col else 30.0
+        cd = col.depth_cm if col else 30.0
+        r = ft.result
+        d_eff = getattr(ft, 'effective_depth_cm', h - 8.0)
+        as_total = r.required_as_cm2 if r else 0.0
+        as_pm = as_total / (a / 100.0) if a > 0 else 10.0
+        bars = _pick_bars(as_pm)
+
+        # ── PLAN VIEW ───────────────────────────────────────────────────────
+        px, py = X0, 0.0
+        _det_rect(msp, px, py, a, b)
+        # column outline (centered)
+        cx0 = px + (a - cw) / 2
+        cy0 = py + (b - cd) / 2
+        _det_rect(msp, cx0, cy0, cw, cd, 'ARMADURA', 13)
+        # diagonal hatch for concrete
+        for k in range(0, int(a) + int(b), 15):
+            y1_ = max(py, py + k - a)
+            y2_ = min(py + b, py + k)
+            x1_ = max(px, px + k - b)
+            x2_ = min(px + a, px + k)
+            if y2_ > y1_:
+                _det_line(msp, x1_, y2_, x2_, y1_, 'HATCH', 9)
+        # section cut line A-A
+        _det_line(msp, px - 6, py + b/2, px + a + 6, py + b/2, 'EIXO', 9)
+        _det_txt(msp, 'A', px - 9, py + b/2 - 2.5, 5, 'TEXTO')
+        _det_txt(msp, 'A', px + a + 6.5, py + b/2 - 2.5, 5, 'TEXTO')
+        _det_dim_h(msp, px, px + a, py, f"{a:.0f}")
+        _det_dim_v(msp, px + a, py, py + b, f"{b:.0f}")
+        _det_txt(msp, f"{bars} (2 dir.)", px, py - 18, 4, 'ARMADURA')
+        _det_txt(msp, "PLANTA  Esc. 1:50", px, py + b + 4, 4)
+        _det_txt(msp, f"SF-{ft.related_column_id}  {a:.0f}x{b:.0f}x{h:.0f} cm",
+                 px, py + b + 11, 5.5)
+
+        # ── SECTION A-A ─────────────────────────────────────────────────────
+        sx = px + a + PSG
+        sy = py
+        _det_rect(msp, sx, sy, b, h)
+        # column stub above
+        cs_x = sx + (b - cw) / 2
+        _det_rect(msp, cs_x, sy + h, cw, h * 0.25, 'BETAO', 18)
+        # diagonal hatch
+        for k in range(0, int(b) + int(h), 15):
+            y1_ = max(sy, sy + k - b)
+            y2_ = min(sy + h, sy + k)
+            x1_ = max(sx, sx + k - h)
+            x2_ = min(sx + b, sx + k)
+            if y2_ > y1_:
+                _det_line(msp, x1_, y2_, x2_, y1_, 'HATCH', 9)
+        # bars at bottom (cover=5cm)
+        bar_y = sy + 5.0
+        _det_line(msp, sx + 4, bar_y, sx + b - 4, bar_y, 'ARMADURA', 18)
+        n_c = min(7, max(3, int(b / 14)))
+        sp_c = (b - 8) / max(n_c - 1, 1)
+        for bi in range(n_c):
+            msp.add_circle((sx + 4 + bi * sp_c, bar_y), 1.0, dxfattribs={'layer': 'ARMADURA'})
+        # starter bars (vertical)
+        for bx_ in [cs_x + 3, cs_x + cw - 3]:
+            _det_line(msp, bx_, sy + h + h * 0.25, bx_, bar_y, 'ARMADURA', 13)
+        # dimension height
+        _det_dim_v(msp, sx + b, sy, sy + h, f"{h:.0f}")
+        # effective depth note
+        _det_line(msp, sx + b + 14, sy + h, sx + b + 14, bar_y, 'COTAS', 9)
+        _det_txt(msp, f"d={d_eff:.0f}", sx + b + 16, (sy + h + bar_y) / 2, 3, 'COTAS')
+        _det_txt(msp, f"c=5", sx + b + 2, sy + 1.5, 2.5, 'TEXTO')
+        _det_txt(msp, f"Arranque: L={max(40*16, 400):.0f}mm (min 40phi)", sx, sy - 10, 3, 'TEXTO')
+        _det_txt(msp, f"{bars}", sx, sy - 18, 4, 'ARMADURA')
+        _det_txt(msp, "CORTE A-A  Esc. 1:50", sx, sy + h + 4, 4)
+
+        X0 += a + PSG + b + DG
+
+    _det_txt(msp, "PORMENOR - SAPATAS ISOLADAS", 0, -35, 8)
+    if project.name:
+        _det_txt(msp, f"Obra: {project.name}", 0, -46, 5)
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
+
+
+def draw_column_section_dxf(project: 'Project') -> bytes:
+    """
+    DXF cross-section details for columns, grouped by unique (b×h).
+    Shows corner bars + stirrups + labels.
+    Units: cm.
+    """
+    doc, msp, _ = _det_new_doc()
+    if doc is None:
+        return b""
+    cols_ok = [c for c in project.columns if c.result]
+    if not cols_ok:
+        _det_txt(msp, "Sem pilares com resultado.", 0, 0, 6)
+        out = io.StringIO(); doc.write(out); return out.getvalue().encode('utf-8')
+
+    # Group by unique section
+    groups: dict = {}
+    for c in cols_ok:
+        key = (round(c.width_cm), round(c.depth_cm), c.shape)
+        groups.setdefault(key, []).append(c)
+
+    X0 = 0.0
+    GAP = 25.0
+
+    for (bw, hd, shape), col_list in groups.items():
+        c = col_list[0]
+        r = c.result
+        as_adot = r.adopted_as_cm2 if r else 0.0
+        ids_str = ', '.join(c2.id for c2 in col_list[:8]) + ('…' if len(col_list) > 8 else '')
+        cov = 3.5
+        bar_r = 1.5
+
+        px, py = X0, 0.0
+        if shape == 'circular':
+            rad = bw / 2.0
+            msp.add_circle((px + rad, py + rad), rad, dxfattribs={'layer': 'BETAO', 'lineweight': 25})
+            msp.add_circle((px + rad, py + rad), rad - cov,
+                           dxfattribs={'layer': 'ARMADURA', 'linetype': 'DASHED', 'lineweight': 13})
+            n_bars = max(6, round(as_adot / (math.pi * 4.0 / 4.0)))
+            for i in range(n_bars):
+                ang = 2 * math.pi * i / n_bars
+                bx_ = px + rad + (rad - cov - 2) * math.cos(ang)
+                by_ = py + rad + (rad - cov - 2) * math.sin(ang)
+                msp.add_circle((bx_, by_), bar_r, dxfattribs={'layer': 'ARMADURA'})
+            _det_dim_h(msp, px, px + bw, py, f"D={bw:.0f}")
+            sect_lbl = f"D={bw:.0f}"
+        else:
+            _det_rect(msp, px, py, bw, hd)
+            _det_rect(msp, px + cov, py + cov, bw - 2*cov, hd - 2*cov, 'ARMADURA', 13)
+            corners = [(px+cov+2, py+cov+2), (px+bw-cov-2, py+cov+2),
+                       (px+cov+2, py+hd-cov-2), (px+bw-cov-2, py+hd-cov-2)]
+            for (bx_, by_) in corners:
+                msp.add_circle((bx_, by_), bar_r, dxfattribs={'layer': 'ARMADURA'})
+            # Extra bars for large sections
+            if bw >= 50:
+                msp.add_circle((px + bw/2, py+cov+2), bar_r, dxfattribs={'layer': 'ARMADURA'})
+                msp.add_circle((px + bw/2, py+hd-cov-2), bar_r, dxfattribs={'layer': 'ARMADURA'})
+            if hd >= 50:
+                msp.add_circle((px+cov+2, py + hd/2), bar_r, dxfattribs={'layer': 'ARMADURA'})
+                msp.add_circle((px+bw-cov-2, py + hd/2), bar_r, dxfattribs={'layer': 'ARMADURA'})
+            _det_dim_h(msp, px, px + bw, py, f"{bw:.0f}")
+            _det_dim_v(msp, px + bw, py, py + hd, f"{hd:.0f}")
+            sect_lbl = f"{bw:.0f}x{hd:.0f}"
+
+        # Labels
+        _det_txt(msp, f"As adot. = {as_adot:.1f} cm²", px, py - 12, 4, 'ARMADURA')
+        _det_txt(msp, "Estribos: Ø8@20cm", px, py - 19, 4, 'ARMADURA')
+        _det_txt(msp, f"Pilares: {ids_str}", px, py + hd + 5, 4)
+        _det_txt(msp, f"SECÇÃO {sect_lbl} cm — Esc. 1:25", px, py + hd + 12, 5.5)
+
+        X0 += bw + GAP
+
+    _det_txt(msp, "PORMENOR DE PILARES — SECCAO TRANSVERSAL", 0, -35, 8)
+    if project.name:
+        _det_txt(msp, f"Obra: {project.name}", 0, -46, 5)
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
+
+
+def draw_tie_beam_detail_dxf(project: 'Project') -> bytes:
+    """
+    DXF section details for foundation tie beams (vigas de equilibrio CB.*).
+    Units: cm.
+    """
+    tie_beams = getattr(project, 'tie_beams', []) or []
+    if not tie_beams:
+        return b""
+    doc, msp, _ = _det_new_doc()
+    if doc is None:
+        return b""
+
+    X0 = 0.0
+    GAP = 20.0
+
+    for tb in tie_beams:
+        bw = tb.width_cm
+        bh = tb.height_cm
+        cov = 3.0
+        bar_r = 1.0
+        px, py = X0, 0.0
+
+        _det_rect(msp, px, py, bw, bh)
+        _det_rect(msp, px + cov, py + cov, bw - 2*cov, bh - 2*cov, 'ARMADURA', 13)
+        # Bottom bars (tension)
+        for bx_ in [px + cov + 2, px + bw - cov - 2]:
+            msp.add_circle((bx_, py + cov + 2), bar_r, dxfattribs={'layer': 'ARMADURA'})
+        # Top bars (compression / hangers)
+        for bx_ in [px + cov + 2, px + bw - cov - 2]:
+            msp.add_circle((bx_, py + bh - cov - 2), bar_r, dxfattribs={'layer': 'ARMADURA'})
+
+        _det_dim_h(msp, px, px + bw, py, f"{bw:.0f}")
+        _det_dim_v(msp, px + bw, py, py + bh, f"{bh:.0f}")
+
+        as_req = getattr(tb, 'required_as_cm2', 0.0)
+        bars = _pick_bars(as_req / (bh / 100.0) if bh > 0 else as_req * 10)
+        _det_txt(msp, f"As req. = {as_req:.2f} cm²  ({bars})", px, py - 10, 4, 'ARMADURA')
+        _det_txt(msp, "Estribos: Ø8@20cm (2 ramos)", px, py - 17, 4, 'ARMADURA')
+        _det_txt(msp, f"{tb.id}  L={tb.span_m:.2f}m  T={tb.tie_force_kn:.1f}kN", px, py + bh + 5, 4)
+        _det_txt(msp, f"SECÇÃO {bw:.0f}x{bh:.0f} cm — Esc. 1:25", px, py + bh + 12, 5.5)
+        X0 += bw + GAP
+
+    _det_txt(msp, "PORMENOR - VIGAS DE EQUILIBRIO / AMARRACAO (CB.)", 0, -30, 8)
+    if project.name:
+        _det_txt(msp, f"Obra: {project.name}", 0, -41, 5)
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')
+
+
+def draw_wall_detail_dxf(project: 'Project') -> bytes:
+    """
+    DXF cross-section detail for retaining walls (muro de betao).
+    Shows stem + base slab geometry + bar positions.
+    Units: cm.
+    """
+    walls = getattr(project, 'retaining_walls', []) or []
+    walls_ok = [w for w in walls if w.result]
+    if not walls_ok:
+        return b""
+    doc, msp, _ = _det_new_doc()
+    if doc is None:
+        return b""
+
+    X0 = 0.0
+    GAP = 40.0
+
+    for rw in walls_ok:
+        r = rw.result
+        H_cm    = rw.height_m * 100
+        B_cm    = rw.base_width_m * 100
+        e_cm    = rw.stem_thickness_cm
+        hb_cm   = rw.base_thickness_cm
+        heel_cm = rw.heel_m * 100
+        toe_cm  = rw.toe_m * 100
+        bar_r   = 1.0
+        cov     = 5.0
+
+        px, py = X0, 0.0
+
+        # Base slab
+        _det_rect(msp, px, py, B_cm, hb_cm)
+        # Stem
+        stem_x = px + toe_cm
+        _det_rect(msp, stem_x, py + hb_cm, e_cm, H_cm)
+
+        # Earth fill hatch (heel side)
+        for k in range(0, int(heel_cm) + int(H_cm), 15):
+            ex1 = stem_x + e_cm
+            ey1 = py + hb_cm
+            xh = ex1 + k
+            yh = ey1 + max(0, k - heel_cm)
+            if xh <= ex1 + heel_cm and yh <= ey1 + H_cm:
+                _det_line(msp, min(xh, ex1+heel_cm), ey1+max(0,k-heel_cm),
+                              ex1+max(0,k-H_cm), min(yh, ey1+H_cm), 'HATCH', 9)
+
+        # Stem vertical bars (tension face = heel side)
+        for k in range(int(H_cm // 15)):
+            msp.add_circle((stem_x + e_cm - cov - bar_r,
+                            py + hb_cm + k * 15 + 7.5), bar_r, dxfattribs={'layer': 'ARMADURA'})
+        # Horizontal bars in stem (distributed)
+        for k in range(int(H_cm // 25)):
+            _det_line(msp, stem_x + cov, py + hb_cm + k*25 + 12.5,
+                          stem_x + e_cm - cov, py + hb_cm + k*25 + 12.5, 'ARMADURA', 9)
+
+        # Base slab heel bars (bottom)
+        for k in range(int(heel_cm // 15)):
+            msp.add_circle((stem_x + e_cm + k*15 + 7.5, py + cov + bar_r),
+                           bar_r, dxfattribs={'layer': 'ARMADURA'})
+
+        # Dimensions
+        _det_dim_h(msp, px, px + B_cm, py, f"{B_cm:.0f} cm")
+        _det_dim_h(msp, stem_x, stem_x + e_cm, py + hb_cm + H_cm, f"{e_cm:.0f}")
+        _det_dim_v(msp, px + B_cm, py, py + hb_cm, f"{hb_cm:.0f}")
+        _det_dim_v(msp, px + B_cm, py + hb_cm, py + hb_cm + H_cm, f"{H_cm:.0f} cm")
+        _det_dim_h(msp, px, stem_x, py - 8, f"{toe_cm:.0f}")
+        _det_dim_h(msp, stem_x + e_cm, px + B_cm, py - 8, f"{heel_cm:.0f}")
+
+        # Reinforcement labels
+        bars_stem = _pick_bars(r.required_as_stem_cm2_m)
+        bars_heel = _pick_bars(r.required_as_heel_cm2_m)
+        _det_txt(msp, f"Arm. fuste: {bars_stem}/m", px + B_cm + 5, py + hb_cm + H_cm/2, 4, 'ARMADURA')
+        _det_txt(msp, f"Arm. calcanhar: {bars_heel}/m", px + B_cm + 5, py + hb_cm/2, 4, 'ARMADURA')
+        _det_txt(msp, f"SF={r.sliding_safety:.1f}  SFr={r.overturning_safety:.1f}  "
+                      f"sig={r.bearing_stress_mpa*1000:.0f}kPa",
+                 px, py + hb_cm + H_cm + 5, 3.5)
+        _det_txt(msp, f"{rw.id}  H={rw.height_m:.1f}m  B={rw.base_width_m:.2f}m",
+                 px, py + hb_cm + H_cm + 12, 5.5)
+        _det_txt(msp, "CORTE — MURO DE BETAO — Esc. 1:50", px, py + hb_cm + H_cm + 20, 5.5)
+
+        X0 += B_cm + GAP
+
+    _det_txt(msp, "PORMENOR - MUROS DE BETAO DE SUPORTE", 0, -35, 8)
+    if project.name:
+        _det_txt(msp, f"Obra: {project.name}", 0, -46, 5)
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')

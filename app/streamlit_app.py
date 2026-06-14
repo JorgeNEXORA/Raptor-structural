@@ -579,18 +579,26 @@ with st.sidebar:
                                                draw_column_schedule_dxf,
                                                draw_footing_schedule_dxf,
                                                draw_slab_schedule_dxf,
-                                               draw_retaining_wall_schedule_dxf)
+                                               draw_retaining_wall_schedule_dxf,
+                                               draw_footing_detail_dxf,
+                                               draw_column_section_dxf,
+                                               draw_tie_beam_detail_dxf,
+                                               draw_wall_detail_dxf)
                 _p = st.session_state.project
                 if not st.session_state.get("drawings_ready"):
                     with st.spinner("A gerar desenhos DXF…"):
-                        st.session_state["dxf_vigas"]      = draw_beam_schedule_dxf(_p)
-                        st.session_state["dxf_fundacoes"]  = draw_foundation_plan_dxf(_p)
-                        st.session_state["dxf_piso"]       = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE PISO")
-                        st.session_state["dxf_cobertura"]  = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE COBERTURA")
-                        st.session_state["dxf_pilares"]    = draw_column_schedule_dxf(_p)
-                        st.session_state["dxf_sapatas"]    = draw_footing_schedule_dxf(_p)
-                        st.session_state["dxf_lajes"]      = draw_slab_schedule_dxf(_p)
-                        st.session_state["dxf_muros"]      = draw_retaining_wall_schedule_dxf(_p)
+                        st.session_state["dxf_vigas"]         = draw_beam_schedule_dxf(_p)
+                        st.session_state["dxf_fundacoes"]     = draw_foundation_plan_dxf(_p)
+                        st.session_state["dxf_piso"]          = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE PISO")
+                        st.session_state["dxf_cobertura"]     = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE COBERTURA")
+                        st.session_state["dxf_pilares"]       = draw_column_schedule_dxf(_p)
+                        st.session_state["dxf_sapatas"]       = draw_footing_schedule_dxf(_p)
+                        st.session_state["dxf_lajes"]         = draw_slab_schedule_dxf(_p)
+                        st.session_state["dxf_muros"]         = draw_retaining_wall_schedule_dxf(_p)
+                        st.session_state["dxf_porm_sapatas"]  = draw_footing_detail_dxf(_p)
+                        st.session_state["dxf_porm_pilares"]  = draw_column_section_dxf(_p)
+                        st.session_state["dxf_porm_equilib"]  = draw_tie_beam_detail_dxf(_p)
+                        st.session_state["dxf_porm_muros"]    = draw_wall_detail_dxf(_p)
                         st.session_state["drawings_ready"] = True
                 if st.session_state.get("dxf_fundacoes"):
                     st.download_button("⬇  Planta Fundações (DXF)",
@@ -638,6 +646,32 @@ with st.sidebar:
                     st.download_button("⬇  Muros e Sapatas Corridas (DXF)",
                         data=st.session_state["dxf_muros"],
                         file_name="muros_sapatas_corridas.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                # Pormenores
+                st.markdown("**Pormenores**")
+                if st.session_state.get("dxf_porm_sapatas"):
+                    st.download_button("⬇  Pormenor Sapatas Isoladas (DXF)",
+                        data=st.session_state["dxf_porm_sapatas"],
+                        file_name="pormenor_sapatas_isoladas.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_porm_pilares"):
+                    st.download_button("⬇  Pormenor Pilares — Secção (DXF)",
+                        data=st.session_state["dxf_porm_pilares"],
+                        file_name="pormenor_pilares_seccao.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_porm_equilib"):
+                    st.download_button("⬇  Pormenor Vigas de Equilíbrio (DXF)",
+                        data=st.session_state["dxf_porm_equilib"],
+                        file_name="pormenor_vigas_equilibrio.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_porm_muros"):
+                    st.download_button("⬇  Pormenor Muro de Betão (DXF)",
+                        data=st.session_state["dxf_porm_muros"],
+                        file_name="pormenor_muro_betao.dxf",
                         mime="application/octet-stream",
                         use_container_width=True)
             except Exception as _e:
