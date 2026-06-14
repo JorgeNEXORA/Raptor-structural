@@ -2164,3 +2164,98 @@ def draw_retaining_wall_schedule(project: Project) -> bytes:
     fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
     plt.close(fig)
     return buf.getvalue()
+
+
+def draw_retaining_wall_schedule_dxf(project: 'Project') -> bytes:
+    """DXF schedule for retaining walls and continuous footings (two tables)."""
+    try:
+        doc, msp = _dxf_new_doc()
+    except ImportError:
+        return b""
+
+    walls = getattr(project, 'retaining_walls', [])
+    cfs   = getattr(project, 'continuous_footings', [])
+    TH = 0.090
+    ROW_H = 0.6
+    x0 = 0.0
+
+    _dxf_text(msp, f'MUROS E SAPATAS CORRIDAS — {project.name}', 0, 0.6, 0.18, 'TEXTO', 'LEFT', color=7)
+
+    # ── Muros ────────────────────────────────────────────────────────────────────
+    W_COLS  = ["ID", "H(m)", "e(cm)", "Base(m)", "γ(kN/m³)", "φ(°)", "q(kN/m²)", "SF Desliz.", "SF Derub.", "σ(kPa)", "OK"]
+    W_WIDTHS= [0.8,  1.0,   0.9,    1.1,      1.2,       0.8,   1.2,          1.2,         1.2,        1.1,    0.6]
+    total_w = sum(W_WIDTHS)
+    y0 = 0.0
+
+    _dxf_text(msp, 'MUROS DE BETÃO DE SUPORTE', x0, y0 + 0.18, 0.14, 'TEXTO', 'LEFT', color=5)
+    _dxf_rect(msp, x0, y0 - ROW_H, total_w, ROW_H, 'GRELHA', lw=35)
+    xc = x0
+    for hdr, w in zip(W_COLS, W_WIDTHS):
+        _dxf_text(msp, hdr, xc + w/2, y0 - ROW_H/2, TH, 'TEXTO', 'CENTER', color=7)
+        xc += w
+
+    ry = y0 - ROW_H
+    if not walls:
+        ry -= ROW_H
+        _dxf_rect(msp, x0, ry, total_w, ROW_H, 'GRELHA', lw=9)
+        _dxf_text(msp, 'Sem muros de betão', x0 + total_w/2, ry + ROW_H/2, TH, 'TEXTO', 'CENTER', color=8)
+    else:
+        for wall in walls:
+            r = wall.result
+            ok = "OK" if r and r.sliding_ok and r.overturning_ok and r.bearing_ok else "NOK"
+            vals = [
+                wall.id, f"{wall.height_m:.1f}", f"{wall.stem_thickness_cm:.0f}",
+                f"{wall.base_width_m:.2f}", f"{wall.gamma_soil_kn_m3:.0f}", f"{wall.phi_deg:.0f}",
+                f"{wall.surcharge_kn_m2:.1f}",
+                f"{r.sliding_safety:.2f}" if r else "-",
+                f"{r.overturning_safety:.2f}" if r else "-",
+                f"{r.bearing_stress_mpa*1000:.0f}" if r else "-",
+                ok,
+            ]
+            ry -= ROW_H
+            _dxf_rect(msp, x0, ry, total_w, ROW_H, 'GRELHA', lw=13)
+            xc = x0
+            for val, w in zip(vals, W_WIDTHS):
+                clr = 1 if val == "NOK" else (3 if val == "OK" else 8)
+                _dxf_text(msp, str(val), xc + w/2, ry + ROW_H/2, TH, 'TEXTO', 'CENTER', color=clr)
+                xc += w
+
+    # ── Sapatas corridas ──────────────────────────────────────────────────────────
+    C_COLS  = ["ID", "Muro", "Larg(cm)", "Alt(cm)", "Comp(m)", "σ(kPa)", "U.Solo", "As(cm²/m)", "U.Flex"]
+    C_WIDTHS= [0.8,  1.0,   1.0,       0.9,       1.0,      1.0,     0.9,     1.3,         0.9]
+    total_w2 = sum(C_WIDTHS)
+    y1 = ry - 1.2
+
+    _dxf_text(msp, 'SAPATAS CORRIDAS', x0, y1 + 0.18, 0.14, 'TEXTO', 'LEFT', color=3)
+    _dxf_rect(msp, x0, y1 - ROW_H, total_w2, ROW_H, 'GRELHA', lw=35)
+    xc = x0
+    for hdr, w in zip(C_COLS, C_WIDTHS):
+        _dxf_text(msp, hdr, xc + w/2, y1 - ROW_H/2, TH, 'TEXTO', 'CENTER', color=7)
+        xc += w
+
+    ry2 = y1 - ROW_H
+    if not cfs:
+        ry2 -= ROW_H
+        _dxf_rect(msp, x0, ry2, total_w2, ROW_H, 'GRELHA', lw=9)
+        _dxf_text(msp, 'Sem sapatas corridas', x0 + total_w2/2, ry2 + ROW_H/2, TH, 'TEXTO', 'CENTER', color=8)
+    else:
+        for cf in cfs:
+            r = cf.result
+            vals = [
+                cf.id, cf.related_wall_id,
+                f"{cf.width_cm:.0f}", f"{cf.height_cm:.0f}", f"{cf.length_m:.1f}",
+                f"{r.soil_stress_mpa*1000:.0f}" if r else "-",
+                f"{r.soil_utilization:.2f}" if r else "-",
+                f"{r.required_as_cm2_m:.2f}" if r else "-",
+                f"{r.bending_utilization:.2f}" if r else "-",
+            ]
+            ry2 -= ROW_H
+            _dxf_rect(msp, x0, ry2, total_w2, ROW_H, 'GRELHA', lw=13)
+            xc = x0
+            for val, w in zip(vals, C_WIDTHS):
+                _dxf_text(msp, str(val), xc + w/2, ry2 + ROW_H/2, TH, 'TEXTO', 'CENTER', color=8)
+                xc += w
+
+    _dxf_title_block(msp, project, 'MUROS E SAPATAS CORRIDAS', 'S/Escala', 0, ry2 - 0.3)
+    out = io.StringIO(); doc.write(out)
+    return out.getvalue().encode('utf-8')

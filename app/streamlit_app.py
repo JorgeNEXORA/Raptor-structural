@@ -441,30 +441,16 @@ with st.sidebar:
                                  help="Gera planta de fundações, lajes e quadro de pilares")
         if gen_drawings or st.session_state.get("drawings_ready"):
             try:
-                from analysis.drawings import (draw_foundation_plan,
-                                               draw_slab_plan,
-                                               draw_column_schedule,
-                                               draw_footing_schedule,
-                                               draw_beam_schedule,
-                                               draw_slab_schedule,
-                                               draw_retaining_wall_schedule,
-                                               draw_beam_schedule_dxf,
+                from analysis.drawings import (draw_beam_schedule_dxf,
                                                draw_foundation_plan_dxf,
                                                draw_slab_plan_dxf,
                                                draw_column_schedule_dxf,
                                                draw_footing_schedule_dxf,
-                                               draw_slab_schedule_dxf)
+                                               draw_slab_schedule_dxf,
+                                               draw_retaining_wall_schedule_dxf)
                 _p = st.session_state.project
                 if not st.session_state.get("drawings_ready"):
-                    with st.spinner("A gerar desenhos…"):
-                        st.session_state["img_fundacoes"]  = draw_foundation_plan(_p)
-                        st.session_state["img_piso"]       = draw_slab_plan(_p, "PLANTA DA LAJE DE PISO")
-                        st.session_state["img_cobertura"]  = draw_slab_plan(_p, "PLANTA DA LAJE DE COBERTURA")
-                        st.session_state["img_pilares"]    = draw_column_schedule(_p)
-                        st.session_state["img_sapatas"]    = draw_footing_schedule(_p)
-                        st.session_state["img_vigas"]      = draw_beam_schedule(_p)
-                        st.session_state["img_lajes"]      = draw_slab_schedule(_p)
-                        st.session_state["img_muros"]      = draw_retaining_wall_schedule(_p)
+                    with st.spinner("A gerar desenhos DXF…"):
                         st.session_state["dxf_vigas"]      = draw_beam_schedule_dxf(_p)
                         st.session_state["dxf_fundacoes"]  = draw_foundation_plan_dxf(_p)
                         st.session_state["dxf_piso"]       = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE PISO")
@@ -472,32 +458,37 @@ with st.sidebar:
                         st.session_state["dxf_pilares"]    = draw_column_schedule_dxf(_p)
                         st.session_state["dxf_sapatas"]    = draw_footing_schedule_dxf(_p)
                         st.session_state["dxf_lajes"]      = draw_slab_schedule_dxf(_p)
+                        st.session_state["dxf_muros"]      = draw_retaining_wall_schedule_dxf(_p)
                         st.session_state["drawings_ready"] = True
-                st.download_button("⬇  Planta Fundações",
-                    data=st.session_state["img_fundacoes"],
-                    file_name="planta_fundacoes.png", mime="image/png",
-                    use_container_width=True)
-                st.download_button("⬇  Planta Laje Piso",
-                    data=st.session_state["img_piso"],
-                    file_name="planta_laje_piso.png", mime="image/png",
-                    use_container_width=True)
-                st.download_button("⬇  Planta Laje Cobertura",
-                    data=st.session_state["img_cobertura"],
-                    file_name="planta_laje_cobertura.png", mime="image/png",
-                    use_container_width=True)
-                st.download_button("⬇  Quadro de Pilares",
-                    data=st.session_state["img_pilares"],
-                    file_name="quadro_pilares.png", mime="image/png",
-                    use_container_width=True)
-                if st.session_state.get("img_sapatas"):
-                    st.download_button("⬇  Quadro de Sapatas",
-                        data=st.session_state["img_sapatas"],
-                        file_name="quadro_sapatas.png", mime="image/png",
+                if st.session_state.get("dxf_fundacoes"):
+                    st.download_button("⬇  Planta Fundações (DXF)",
+                        data=st.session_state["dxf_fundacoes"],
+                        file_name="planta_fundacoes.dxf",
+                        mime="application/octet-stream",
                         use_container_width=True)
-                if st.session_state.get("img_vigas"):
-                    st.download_button("⬇  Quadro de Vigas (PNG)",
-                        data=st.session_state["img_vigas"],
-                        file_name="quadro_vigas.png", mime="image/png",
+                if st.session_state.get("dxf_piso"):
+                    st.download_button("⬇  Planta Laje Piso (DXF)",
+                        data=st.session_state["dxf_piso"],
+                        file_name="laje_piso.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_cobertura"):
+                    st.download_button("⬇  Planta Laje Cobertura (DXF)",
+                        data=st.session_state["dxf_cobertura"],
+                        file_name="laje_cobertura.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_pilares"):
+                    st.download_button("⬇  Quadro de Pilares (DXF)",
+                        data=st.session_state["dxf_pilares"],
+                        file_name="quadro_pilares.dxf",
+                        mime="application/octet-stream",
+                        use_container_width=True)
+                if st.session_state.get("dxf_sapatas"):
+                    st.download_button("⬇  Quadro de Sapatas (DXF)",
+                        data=st.session_state["dxf_sapatas"],
+                        file_name="quadro_sapatas.dxf",
+                        mime="application/octet-stream",
                         use_container_width=True)
                 if st.session_state.get("dxf_vigas"):
                     st.download_button("⬇  Quadro de Vigas (DXF)",
@@ -505,51 +496,17 @@ with st.sidebar:
                         file_name="quadro_vigas.dxf",
                         mime="application/octet-stream",
                         use_container_width=True)
-                if st.session_state.get("dxf_fundacoes"):
-                    st.download_button("⬇  Fundações (DXF)",
-                        data=st.session_state["dxf_fundacoes"],
-                        file_name="fundacoes.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_piso"):
-                    st.download_button("⬇  Laje Piso (DXF)",
-                        data=st.session_state["dxf_piso"],
-                        file_name="laje_piso.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_cobertura"):
-                    st.download_button("⬇  Laje Cobertura (DXF)",
-                        data=st.session_state["dxf_cobertura"],
-                        file_name="laje_cobertura.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_pilares"):
-                    st.download_button("⬇  Pilares (DXF)",
-                        data=st.session_state["dxf_pilares"],
-                        file_name="quadro_pilares.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_sapatas"):
-                    st.download_button("⬇  Sapatas (DXF)",
-                        data=st.session_state["dxf_sapatas"],
-                        file_name="quadro_sapatas.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("img_lajes"):
-                    st.download_button("⬇  Quadro de Lajes (PNG)",
-                        data=st.session_state["img_lajes"],
-                        file_name="quadro_lajes.png", mime="image/png",
-                        use_container_width=True)
                 if st.session_state.get("dxf_lajes"):
                     st.download_button("⬇  Quadro de Lajes (DXF)",
                         data=st.session_state["dxf_lajes"],
                         file_name="quadro_lajes.dxf",
                         mime="application/octet-stream",
                         use_container_width=True)
-                if st.session_state.get("img_muros"):
-                    st.download_button("⬇  Muros e Sapatas Corridas",
-                        data=st.session_state["img_muros"],
-                        file_name="muros_sapatas_corridas.png", mime="image/png",
+                if st.session_state.get("dxf_muros"):
+                    st.download_button("⬇  Muros e Sapatas Corridas (DXF)",
+                        data=st.session_state["dxf_muros"],
+                        file_name="muros_sapatas_corridas.dxf",
+                        mime="application/octet-stream",
                         use_container_width=True)
             except Exception as _e:
                 st.error(f"Erro ao gerar desenhos: {_e}")
