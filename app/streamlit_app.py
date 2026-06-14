@@ -194,34 +194,56 @@ with st.sidebar:
         raptor_upload = st.file_uploader("Ficheiro .raptor", type=["raptor", "json"],
                                          key="raptor_upload", label_visibility="collapsed")
         if raptor_upload is not None:
-            try:
-                _raw_bytes = raptor_upload.read()
-                _raw_json  = __import__("json").loads(_raw_bytes.decode("utf-8"))
-                if _raw_json.get("raptor_version", "").startswith("inputs_"):
-                    # Inputs snapshot
-                    _inp_loaded = _load_inp(_raw_bytes)
-                    for _ik, _iv in _inp_loaded.items():
-                        st.session_state[_ik] = _iv
-                    st.success("Inputs restaurados com sucesso.")
-                    st.rerun()
-                else:
-                    # Full project
-                    from core.persistence import load_project as _load_proj
-                    _loaded = _load_proj(_raw_bytes)
-                    st.session_state.project = _loaded
-                    st.session_state.drawings_ready = False
-                    # Restaurar session state manuais a partir do projeto
-                    st.session_state.manual_retaining_walls = list(_loaded.retaining_walls or [])
-                    # Lajes sem polígono foram criadas manualmente (não vêm de DXF)
-                    st.session_state.manual_slabs = [s for s in (_loaded.slabs or [])
-                                                     if not getattr(s, 'polygon_points', None)]
-                    st.session_state.manual_flat_slabs = list(getattr(_loaded, 'flat_slabs', []) or [])
-                    st.session_state.manual_stairs = list(getattr(_loaded, 'stairs', []) or [])
-                    st.session_state.manual_walls = list(getattr(_loaded, 'walls', []) or [])
-                    st.success(f"Projeto '{_loaded.name}' carregado com sucesso.")
-                    st.rerun()
-            except Exception as _le:
-                st.error(f"Erro ao abrir ficheiro: {_le}")
+            # Guard: só processa quando é um ficheiro novo (evita loop infinito de reruns)
+            _up_uid = f"{raptor_upload.name}_{raptor_upload.size}"
+            if st.session_state.get("_raptor_loaded_id") != _up_uid:
+                try:
+                    _raw_bytes = raptor_upload.read()
+                    _raw_json  = __import__("json").loads(_raw_bytes.decode("utf-8"))
+                    if _raw_json.get("raptor_version", "").startswith("inputs_"):
+                        # Inputs snapshot
+                        _inp_loaded = _load_inp(_raw_bytes)
+                        for _ik, _iv in _inp_loaded.items():
+                            st.session_state[_ik] = _iv
+                        st.session_state["_raptor_loaded_id"] = _up_uid
+                        st.success("Inputs restaurados com sucesso.")
+                        st.rerun()
+                    else:
+                        # Full project
+                        from core.persistence import load_project as _load_proj
+                        _loaded = _load_proj(_raw_bytes)
+                        st.session_state.project = _loaded
+                        st.session_state.drawings_ready = False
+                        # Restaurar session state manuais
+                        st.session_state.manual_retaining_walls = list(_loaded.retaining_walls or [])
+                        st.session_state.manual_slabs = [s for s in (_loaded.slabs or [])
+                                                         if not getattr(s, 'polygon_points', None)]
+                        st.session_state.manual_flat_slabs = list(getattr(_loaded, 'flat_slabs', []) or [])
+                        st.session_state.manual_stairs    = list(getattr(_loaded, 'stairs', []) or [])
+                        st.session_state.manual_walls     = list(getattr(_loaded, 'walls', []) or [])
+                        # Reconstruir portico_slab_map a partir de beam.supported_slab_ids
+                        _psmap_r = {}
+                        for _lb in (_loaded.beams or []):
+                            if getattr(_lb, 'beam_type', None) == BeamType.FRAME:
+                                _lp = (getattr(_lb, 'portico_id', '') or '').strip() or _lb.id
+                                for _ls in getattr(_lb, 'supported_slab_ids', []):
+                                    _psmap_r.setdefault(_lp, [])
+                                    if _ls not in _psmap_r[_lp]:
+                                        _psmap_r[_lp].append(_ls)
+                        st.session_state.portico_slab_map = _psmap_r
+                        st.session_state["_raptor_loaded_id"] = _up_uid
+                        _n_rw = len(st.session_state.manual_retaining_walls)
+                        _n_sl = len(st.session_state.manual_slabs)
+                        st.success(f"Projeto '{_loaded.name}' carregado — {_n_rw} muros, {_n_sl} lajes.")
+                        st.rerun()
+                except Exception as _le:
+                    st.error(f"Erro ao abrir ficheiro: {_le}")
+            else:
+                _proj_loaded = st.session_state.get("project")
+                if _proj_loaded:
+                    _n_rw = len(st.session_state.get("manual_retaining_walls", []))
+                    _n_sl = len(st.session_state.get("manual_slabs", []))
+                    st.success(f"'{_proj_loaded.name}' — {_n_rw} muros, {_n_sl} lajes")
     st.divider()
 
     mode = st.radio("Modo de entrada", ["CSV", "DXF"], horizontal=True)
