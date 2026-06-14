@@ -1999,7 +1999,7 @@ def draw_slab_schedule(project: Project) -> bytes:
 
 
 def draw_slab_schedule_dxf(project: Project) -> bytes:
-    """DXF slab schedule table."""
+    """DXF slab schedule table — split into PISO and COBERTURA sections."""
     slabs = project.slabs
     doc, msp = _dxf_new_doc()
 
@@ -2008,60 +2008,69 @@ def draw_slab_schedule_dxf(project: Project) -> bytes:
         "two_way": "Maciça 2 dir.", "cantilever": "Consola",
     }
 
-    COLS = ["ID", "Nível", "Tipo", "Vigota/Catálogo", "Vão(m)", "h1+h2", "gk", "qk", "Msd(kNm/m)", "As(cm²/m)", "Maciç.", "U.Fl"]
-    WIDTHS = [1.0, 1.2, 2.5, 2.5, 1.3, 1.2, 1.0, 1.0, 1.5, 1.8, 1.2, 1.0]
+    COLS = ["ID", "Tipo", "Vigota/Catálogo", "Vão(m)", "h1+h2", "gk", "qk", "Msd(kNm/m)", "As(cm²/m)", "Maciç.", "U.Fl"]
+    WIDTHS = [1.0, 2.5, 2.5, 1.3, 1.2, 1.0, 1.0, 1.5, 1.8, 1.2, 1.0]
     ROW_H = 0.6
-    TH = 0.090  # text height
-
-    # Title
-    _dxf_text(msp, f'QUADRO DE LAJES — {project.name}', 0, 0.4, 0.18, 'TEXTO', 'LEFT', color=7)
-    _dxf_text(msp, 'LAJES DE PISO', 0, 0.2, 0.14, 'TEXTO', 'LEFT', color=5)
-
-    x0 = 0.0; y0 = 0.0
+    TH = 0.090
     total_w = sum(WIDTHS)
-    _dxf_rect(msp, x0, y0 - ROW_H, total_w, ROW_H, 'GRELHA', lw=35)
-    xc = x0
-    for i, (hdr, w) in enumerate(zip(COLS, WIDTHS)):
-        _dxf_text(msp, hdr, xc + w/2, y0 - ROW_H/2, TH, 'TEXTO', 'CENTER', color=7)
-        xc += w
+    x0 = 0.0
+    fyd = min(getattr(project, 'fyk_mpa', 500) / 1.15, 435.0)
+    fcd = getattr(project, 'fck_mpa', 25) / 1.5
 
-    rows_y = y0 - ROW_H
-    for si, s in enumerate(slabs):
+    def _slab_vals(s):
         tp = _TYPE_PT.get(_slab_val(s.slab_type), _slab_val(s.slab_type))
         r = s.result
-        fyd = min(getattr(project,'fyk_mpa',500)/1.15, 435.0)
-        fcd = getattr(project,'fck_mpa',25)/1.5
-        d_m = s.effective_depth_cm/100
         As = 0.0
         if r:
-            mu = r.msd_knm_m*1000/max(d_m**2*fcd*1e6,1e-6)
-            mu = min(mu,0.295)
-            omega = 1-math.sqrt(max(1-2*mu,0))
-            As = max(omega*d_m*fcd*1e6/(fyd*1e6)*10000, 0.0013*100*s.effective_depth_cm)
+            d_m = s.effective_depth_cm / 100
+            mu = min(r.msd_knm_m * 1000 / max(d_m**2 * fcd * 1e6, 1e-6), 0.295)
+            omega = 1 - math.sqrt(max(1 - 2*mu, 0))
+            As = max(omega * d_m * fcd * 1e6 / (fyd * 1e6) * 10000,
+                     0.0013 * 100 * s.effective_depth_cm)
         sv = _slab_val(s.slab_type)
         h_str = (f"{int(s.thickness_cm-5)}+5" if sv in (_ST_RIBBED, _ST_ONE_WAY) and s.thickness_cm > 5
                  else f"{s.thickness_cm:.0f}")
         macic = "Apoios" if sv in (_ST_RIBBED, _ST_ONE_WAY) else "-"
-        nivel = getattr(s, 'level', 'piso').capitalize()
-        cat = (s.catalog_id or "-")[:15]
-        vals = [
-            s.id, nivel, tp[:16], cat,
+        cat = (s.catalog_id or "-")[:16]
+        return [
+            s.id, tp[:18], cat,
             f"{s.span_m:.2f}", h_str,
             f"{s.gk_kn_m2:.2f}", f"{s.qk_kn_m2:.2f}",
             f"{r.msd_knm_m:.2f}" if r else "-",
             f"{As:.2f}", macic,
             f"{getattr(r,'deflection_utilization',0):.2f}" if r else "-",
         ]
-        ry = rows_y - ROW_H
-        _dxf_rect(msp, x0, ry, total_w, ROW_H, 'GRELHA', lw=13)
-        xc = x0
-        for val, w in zip(vals, WIDTHS):
-            _dxf_text(msp, str(val), xc + w/2, ry + ROW_H/2, TH, 'TEXTO', 'CENTER', color=8)
-            xc += w
-        rows_y = ry
 
-    y_bot = rows_y
-    _dxf_title_block(msp, project, 'QUADRO DE LAJES', 'S/Escala', 0, y_bot - 0.3)
+    def _draw_section(title, section_slabs, y_start, color):
+        _dxf_text(msp, title, x0, y_start + 0.18, 0.14, 'TEXTO', 'LEFT', color=color)
+        # header row
+        _dxf_rect(msp, x0, y_start - ROW_H, total_w, ROW_H, 'GRELHA', lw=35)
+        xc = x0
+        for hdr, w in zip(COLS, WIDTHS):
+            _dxf_text(msp, hdr, xc + w/2, y_start - ROW_H/2, TH, 'TEXTO', 'CENTER', color=7)
+            xc += w
+        ry = y_start - ROW_H
+        for s in section_slabs:
+            vals = _slab_vals(s)
+            ry -= ROW_H
+            _dxf_rect(msp, x0, ry, total_w, ROW_H, 'GRELHA', lw=13)
+            xc = x0
+            for val, w in zip(vals, WIDTHS):
+                _dxf_text(msp, str(val), xc + w/2, ry + ROW_H/2, TH, 'TEXTO', 'CENTER', color=8)
+                xc += w
+        return ry
+
+    _dxf_text(msp, f'QUADRO DE LAJES — {project.name}', 0, 0.6, 0.18, 'TEXTO', 'LEFT', color=7)
+
+    piso_slabs = [s for s in slabs if getattr(s, 'level', 'piso') != 'cobertura']
+    cob_slabs  = [s for s in slabs if getattr(s, 'level', 'piso') == 'cobertura']
+
+    y_cursor = 0.0
+    y_cursor = _draw_section('LAJE DE PISO', piso_slabs, y_cursor, color=5)
+    y_cursor -= 1.0  # gap between sections
+    y_cursor = _draw_section('LAJE DE COBERTURA', cob_slabs, y_cursor, color=3)
+
+    _dxf_title_block(msp, project, 'QUADRO DE LAJES', 'S/Escala', 0, y_cursor - 0.3)
     out = io.StringIO(); doc.write(out)
     return out.getvalue().encode('utf-8')
 
