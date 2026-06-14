@@ -582,6 +582,37 @@ with st.sidebar:
                     st.session_state.manual_slabs.pop(_i)
                     st.rerun()
 
+    # ── Pórticos → Lajes (sidebar, antes do cálculo) ─────────────────────────
+    _psmap_sb   = st.session_state.get("portico_slab_map", {})
+    _sb_piso_ids = [s.id for s in st.session_state.manual_slabs if getattr(s, 'level', 'piso') != 'cobertura']
+    _sb_cob_ids  = [s.id for s in st.session_state.manual_slabs if getattr(s, 'level', 'piso') == 'cobertura']
+    _n_atrib = sum(len(v) for v in _psmap_sb.values())
+    with st.expander(f"🏗️ Pórticos — lajes atribuídas ({_n_atrib})"):
+        st.caption("Define qual o ID do pórtico (igual ao campo 'portico_id' no CSV de vigas) "
+                   "e que lajes apoiam nele.")
+        # Mostrar atribuições existentes
+        for _pp_id in list(_psmap_sb.keys()):
+            _pp_cur = _psmap_sb[_pp_id]
+            _ppa, _ppb = st.columns([4, 1])
+            _ppa.markdown(f"**{_pp_id}** — {', '.join(_pp_cur) if _pp_cur else '(sem lajes)'}")
+            if _ppb.button("🗑", key=f"del_psmap_{_pp_id}"):
+                del _psmap_sb[_pp_id]
+                st.session_state.portico_slab_map = _psmap_sb
+                st.rerun()
+
+        st.divider()
+        # Adicionar / editar pórtico
+        with st.form("form_portico_sb", clear_on_submit=True):
+            _pp_new_id = st.text_input("ID do pórtico (ex: P1-P2, V1)", placeholder="portico_id do CSV")
+            _pp_c1, _pp_c2 = st.columns(2)
+            _pp_piso = _pp_c1.multiselect("Lajes de piso", options=_sb_piso_ids, key="pp_piso_sel")
+            _pp_cob  = _pp_c2.multiselect("Lajes de cobertura", options=_sb_cob_ids, key="pp_cob_sel")
+            if st.form_submit_button("✅ Guardar atribuição"):
+                if _pp_new_id.strip():
+                    _psmap_sb[_pp_new_id.strip()] = _pp_piso + _pp_cob
+                    st.session_state.portico_slab_map = _psmap_sb
+                    st.rerun()
+
     # ── Configuração de Cargas ───────────────────────────────────────────────
     st.divider()
     st.markdown("**Configuração de cargas**")
