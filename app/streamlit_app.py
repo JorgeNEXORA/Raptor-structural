@@ -210,6 +210,13 @@ with st.sidebar:
                     _loaded = _load_proj(_raw_bytes)
                     st.session_state.project = _loaded
                     st.session_state.drawings_ready = False
+                    # Restaurar session state manuais a partir do projeto
+                    st.session_state.manual_retaining_walls = list(_loaded.retaining_walls or [])
+                    st.session_state.manual_slabs = [s for s in (_loaded.slabs or [])
+                                                     if not getattr(s, 'polygon_points', None)]
+                    st.session_state.manual_flat_slabs = list(getattr(_loaded, 'flat_slabs', []) or [])
+                    st.session_state.manual_stairs = list(getattr(_loaded, 'stairs', []) or [])
+                    st.session_state.manual_walls = list(getattr(_loaded, 'walls', []) or [])
                     st.success(f"Projeto '{_loaded.name}' carregado com sucesso.")
                     st.rerun()
             except Exception as _le:
