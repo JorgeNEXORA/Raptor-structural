@@ -716,9 +716,15 @@ def _draw_single_footing_cell(ax, footing, col):
     ax.text(fa / 2, fb + pad * 0.3, footing.id,
             ha='center', va='bottom', fontsize=7, fontweight='bold')
 
+    # Orientation type badge
+    ft_type = getattr(footing, 'footing_type', None)
+    ft_label = "Excêntr." if ft_type and ft_type.value == "eccentric" else "Concêntr."
+    ax.text(fa / 2, fb + pad * 0.3 - 3.5, ft_label,
+            ha='center', va='bottom', fontsize=5, color='#0044aa')
+
     # Column ID reference
     if col:
-        ax.text(fa / 2, fb + pad * 0.3 - 4,
+        ax.text(fa / 2, fb + pad * 0.3 - 7,
                 f'({col.id})',
                 ha='center', va='bottom', fontsize=5.5, color='#555555')
 
@@ -1847,6 +1853,9 @@ def draw_footing_schedule_dxf(project: 'Project') -> bytes:
         # Labels
         y_lbl = y0 - CELL_H*0.72
         _dxf_text(msp, ft.id, cx, y0 + TH_MD*0.3, TH_MD, 'TEXTO', 'CENTER', color=7)
+        ft_type = getattr(ft, 'footing_type', None)
+        ft_label = "Excêntr." if ft_type and ft_type.value == "eccentric" else "Concêntr."
+        _dxf_text(msp, ft_label, cx, y0 - TH_SM*0.3, TH_SM, 'TEXTO', 'CENTER', color=5)
         _dxf_text(msp, f'{int(ft.width_a_cm)}x{int(ft.width_b_cm)}x{int(ft.height_cm)} cm',
                   cx, y_lbl, TH_SM, 'TEXTO', 'CENTER', color=8)
         if ft.result:
