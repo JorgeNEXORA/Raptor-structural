@@ -158,13 +158,15 @@ def _draw_slab_bay(ax, x1, y1, x2, y2, slab):
         ax.text(cx, cy + 0.12, slab.id,
                 ha='center', va='center', fontsize=7, fontweight='bold', zorder=6)
         cat = f' [{slab.catalog_id}]' if getattr(slab, 'catalog_id', None) else ''
+        h_str = (f"{int(slab.thickness_cm-5)}+5" if sv in (_ST_RIBBED, _ST_ONE_WAY) and slab.thickness_cm > 5
+                 else f"{slab.thickness_cm:.0f}")
         ax.text(cx, cy - 0.18,
-                f'{stype_label} h={slab.thickness_cm}cm  L={slab.span_m}m{cat}',
+                f'{stype_label} h={h_str}cm  L={slab.span_m:.1f}m{cat}',
                 ha='center', va='top', fontsize=5.5, color='#333333', zorder=6)
 
 
-def _draw_vigota_lines(ax, x1, y1, x2, y2, span_dir, spacing=0.42):
-    """Parallel vigota/rib lines — spacing 42 cm matches a typical BL40 block."""
+def _draw_vigota_lines(ax, x1, y1, x2, y2, span_dir, spacing=0.40):
+    """Parallel vigota/rib lines — 40 cm spacing matches PAVINORTE/BL40 blocks."""
     color = '#aaaaaa'
     lw = 0.45
     margin = 0.05
@@ -347,7 +349,7 @@ def draw_slab_plan(project: Project, title: str = "PLANTA DA LAJE DE PISO") -> b
                 from matplotlib.path import Path as MPath
                 clip_patch = patches.Polygon(pts, closed=True, transform=ax.transData)
                 # Draw vigota lines (will be clipped)
-                color = '#aaaaaa'; margin = 0.05; lw = 0.45; sp = 0.42
+                color = '#aaaaaa'; margin = 0.05; lw = 0.45; sp = 0.40
                 if span_dir == 'x':
                     y = by1 + sp
                     while y < by2 - margin:
@@ -389,8 +391,10 @@ def draw_slab_plan(project: Project, title: str = "PLANTA DA LAJE DE PISO") -> b
             cat = f'[{slab.catalog_id}]' if getattr(slab,'catalog_id',None) else ''
             ax.text(cx, cy + 0.10, slab.id,
                     ha='center', va='center', fontsize=6.5, fontweight='bold', zorder=5)
+            h_str = (f"{int(slab.thickness_cm-5)}+5" if sv in (_ST_RIBBED, _ST_ONE_WAY) and slab.thickness_cm > 5
+                     else f"{slab.thickness_cm:.0f}")
             ax.text(cx, cy - 0.20,
-                    f'{sv_label} h={slab.thickness_cm:.0f}cm L={slab.span_m:.1f}m {cat}'.strip(),
+                    f'{sv_label} h={h_str}cm L={slab.span_m:.1f}m {cat}'.strip(),
                     ha='center', va='top', fontsize=5.0, color='#333333', zorder=5)
             drawn_slab_ids.add(slab.id)
 

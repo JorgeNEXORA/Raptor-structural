@@ -957,10 +957,29 @@ with tab_lajes:
         "Varanda":   (_lcfg.get("gk_var",  5.50), _lcfg.get("qk_var",  3.0)),
         "Cobertura": (_lcfg.get("gk_cob",  5.50), _lcfg.get("qk_cob",  1.0)),
     }
-    with st.expander("✏️ Editar nível, zona de carga e catálogo por laje"):
-        st.caption("Zona de carga: Habitável = piso normal, Garagem = LP7, Cobertura = laje de cobertura.")
+    _stype_opts = {"Aligeirada (vigotas)": "ribbed", "Maciça 1 dir.": "one_way",
+                   "Maciça 2 dir.": "two_way", "Consola": "cantilever"}
+    _stype_rev = {v: k for k, v in _stype_opts.items()}
+    with st.expander("✏️ Editar tipo, nível, zona de carga e catálogo por laje"):
+        st.caption("Zona de carga: Habitável = piso normal, Garagem = LP7; LM = Laje Maciça.")
         for _si, _sl in enumerate(p.slabs):
-            _lc1, _lc2, _lc3, _lc4 = st.columns([1, 1, 2, 1])
+            _lc0, _lc1, _lc2, _lc3, _lc4 = st.columns([1, 1, 1, 2, 1])
+            _lc0.markdown(f"**{_sl.id}**")
+            # Slab type
+            from core.model import SlabType
+            _cur_st_val = _sl.slab_type.value if hasattr(_sl.slab_type, 'value') else str(_sl.slab_type)
+            _cur_st_label = _stype_rev.get(_cur_st_val, "Aligeirada (vigotas)")
+            _new_st_label = _lc0.selectbox(
+                f"{_sl.id} — tipo", options=list(_stype_opts.keys()),
+                index=list(_stype_opts.keys()).index(_cur_st_label) if _cur_st_label in _stype_opts else 0,
+                key=f"slab_type_{_sl.id}", label_visibility="collapsed",
+            )
+            _new_st_val = _stype_opts[_new_st_label]
+            if _new_st_val != _cur_st_val:
+                _sl.slab_type = SlabType(_new_st_val)
+                if _new_st_val in ("two_way", "cantilever"):
+                    _sl.catalog_id = None  # maciças don't use PAVINORTE catalog
+
             _cur_lv = getattr(_sl, 'level', 'piso')
             _new_lv = _lc1.selectbox(
                 f"{_sl.id} — nível", options=["piso", "cobertura"],
