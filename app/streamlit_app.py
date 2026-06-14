@@ -1595,32 +1595,6 @@ with tab_vigas:
             if _new_mh != _cur_mh:
                 _beam.max_height_cm = _new_mh
 
-    # Editor: set beam cross-section b×h (useful for vigas planas where h = slab thickness)
-    _bov_state = st.session_state.get("beam_overrides", {})
-    _bov_changed = dict(_bov_state)
-    with st.expander("✏️ Editar secção das vigas (b×h) — vigas planas e ajustes manuais"):
-        st.caption("Altera b×h de qualquer viga. Clica **▶ Correr cálculo** para aplicar as dimensões alteradas.")
-        _bsec_hdr = st.columns([0.35, 0.32, 0.33])
-        _bsec_hdr[0].markdown("**Viga**")
-        _bsec_hdr[1].markdown("**b (cm)**")
-        _bsec_hdr[2].markdown("**h (cm)**")
-        for _beam in p.beams:
-            _ov = _bov_changed.get(_beam.id, {})
-            _cur_b = float(_ov.get("width_cm",  _beam.width_cm))
-            _cur_h = float(_ov.get("height_cm", _beam.height_cm))
-            _col_lbl, _col_b, _col_h = st.columns([0.35, 0.32, 0.33])
-            _col_lbl.markdown(f"**{_beam.id}** ({int(_beam.width_cm)}×{int(_beam.height_cm)})")
-            _new_b = _col_b.number_input(
-                "b", value=_cur_b, min_value=10.0, max_value=150.0, step=5.0,
-                key=f"bov_b_{_beam.id}", label_visibility="collapsed"
-            )
-            _new_h = _col_h.number_input(
-                "h", value=_cur_h, min_value=10.0, max_value=200.0, step=5.0,
-                key=f"bov_h_{_beam.id}", label_visibility="collapsed"
-            )
-            _bov_changed[_beam.id] = {"width_cm": _new_b, "height_cm": _new_h}
-    st.session_state.beam_overrides = _bov_changed
-
     rows = []
     for b in p.beams:
         r = b.result
