@@ -41,13 +41,13 @@ class TieBeamPlanner:
             _, dist, other = best
             ties.append(
                 FoundationTieBeam(
-                    id=f"TB{counter}",
+                    id=f"CB.{counter}.1",
                     start_footing_id=f.id,
                     end_footing_id=other.id,
-                    width_cm=25.0,
+                    width_cm=30.0,
                     height_cm=60.0,
                     span_m=dist,
-                    recommendation="Viga de equilíbrio proposta automaticamente"
+                    recommendation="Viga de amarração/equilíbrio proposta automaticamente"
                 )
             )
             used.add(f.id)

@@ -1999,12 +1999,15 @@ def draw_slab_schedule_dxf(project: Project) -> bytes:
         "two_way": "Maciça 2 dir.", "cantilever": "Consola",
     }
 
-    COLS = ["ID", "Tipo", "Dir", "Vão(m)", "h(cm)", "gk", "qk", "Msd", "As(cm²/m)", "Util.Flex"]
-    WIDTHS = [1.2, 3.0, 0.8, 1.5, 1.2, 1.2, 1.2, 1.5, 2.0, 1.8]
+    COLS = ["ID", "Nível", "Tipo", "Vigota/Catálogo", "Vão(m)", "h1+h2", "gk", "qk", "Msd(kNm/m)", "As(cm²/m)", "Maciç.", "U.Fl"]
+    WIDTHS = [1.0, 1.2, 2.5, 2.5, 1.3, 1.2, 1.0, 1.0, 1.5, 1.8, 1.2, 1.0]
     ROW_H = 0.6
-    TH = 0.100  # text height (same as TH_SM)
+    TH = 0.090  # text height
 
-    # Header row
+    # Title
+    _dxf_text(msp, f'QUADRO DE LAJES — {project.name}', 0, 0.4, 0.18, 'TEXTO', 'LEFT', color=7)
+    _dxf_text(msp, 'LAJES DE PISO', 0, 0.2, 0.14, 'TEXTO', 'LEFT', color=5)
+
     x0 = 0.0; y0 = 0.0
     total_w = sum(WIDTHS)
     _dxf_rect(msp, x0, y0 - ROW_H, total_w, ROW_H, 'GRELHA', lw=35)
@@ -2026,12 +2029,18 @@ def draw_slab_schedule_dxf(project: Project) -> bytes:
             mu = min(mu,0.295)
             omega = 1-math.sqrt(max(1-2*mu,0))
             As = max(omega*d_m*fcd*1e6/(fyd*1e6)*10000, 0.0013*100*s.effective_depth_cm)
+        sv = _slab_val(s.slab_type)
+        h_str = (f"{int(s.thickness_cm-5)}+5" if sv in (_ST_RIBBED, _ST_ONE_WAY) and s.thickness_cm > 5
+                 else f"{s.thickness_cm:.0f}")
+        macic = "Apoios" if sv in (_ST_RIBBED, _ST_ONE_WAY) else "-"
+        nivel = getattr(s, 'level', 'piso').capitalize()
+        cat = (s.catalog_id or "-")[:15]
         vals = [
-            s.id, tp[:18], (s.direction or "-").upper(),
-            f"{s.span_m:.2f}", f"{s.thickness_cm:.0f}",
+            s.id, nivel, tp[:16], cat,
+            f"{s.span_m:.2f}", h_str,
             f"{s.gk_kn_m2:.2f}", f"{s.qk_kn_m2:.2f}",
             f"{r.msd_knm_m:.2f}" if r else "-",
-            f"{As:.2f}",
+            f"{As:.2f}", macic,
             f"{getattr(r,'deflection_utilization',0):.2f}" if r else "-",
         ]
         ry = rows_y - ROW_H
