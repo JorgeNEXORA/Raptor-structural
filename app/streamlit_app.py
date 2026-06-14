@@ -59,6 +59,8 @@ for _key, _val in [
     ("manual_retaining_walls", []),
     ("manual_slabs", []),
     ("portico_slab_map", {}),
+    ("col_config", None),
+    ("cols_in_cont_footing", []),
     ("load_cfg", None),
 ]:
     if _key not in st.session_state:
@@ -322,6 +324,77 @@ with st.sidebar:
             if st.button("🗑 Limpar muros"):
                 st.session_state.manual_retaining_walls = []
                 st.rerun()
+
+    # ── Pilares ──────────────────────────────────────────────────────────────
+    _cc_cur = st.session_state.get("col_config") or {}
+    _n_def  = _cc_cur.get("n", 6)
+    with st.expander(f"🏛️ Pilares P1–P{_n_def} ({_n_def} pilares)"):
+        st.caption("Define o número de pilares, pisos e alturas. "
+                   "Se não fizeres upload de CSV, o programa usa esta configuração.")
+        _pc1, _pc2 = st.columns(2)
+        _n_pil = int(_pc1.number_input("Nº de pilares", value=_n_def, min_value=1, max_value=60, step=1, key="cc_n"))
+        _n_pis = int(_pc1.number_input("Nº de pisos", value=_cc_cur.get("n_pisos", 2), min_value=1, max_value=15, step=1, key="cc_npisos"))
+        _h_cav = float(_pc2.number_input("H sapata→piso 1 (m)", value=float(_cc_cur.get("h_cave", 2.80)), min_value=1.0, step=0.05, key="cc_hcave"))
+        _h_pis = float(_pc2.number_input("H entre pisos (m)", value=float(_cc_cur.get("h_piso", 2.80)), min_value=2.0, step=0.05, key="cc_hpiso"))
+        _b_col = int(_pc1.number_input("Secção b (cm)", value=_cc_cur.get("b", 30), min_value=20, max_value=120, step=5, key="cc_b"))
+        _h_col = int(_pc2.number_input("Secção h (cm)", value=_cc_cur.get("h", 30), min_value=20, max_value=120, step=5, key="cc_h"))
+
+        _all_pil_ids = [f"P{i}" for i in range(1, _n_pil + 1)]
+        _cur_cont = [_p for _p in st.session_state.get("cols_in_cont_footing", []) if _p in _all_pil_ids]
+        _pil_cont = st.multiselect(
+            "Pilares em sapata corrida (muro cave)",
+            options=_all_pil_ids,
+            default=_cur_cont,
+            help="Os restantes ficam em sapata isolada.",
+            key="cc_cont_pils",
+        )
+        _isol_pils = [_p for _p in _all_pil_ids if _p not in _pil_cont]
+        if _isol_pils:
+            st.caption(f"Isoladas ({len(_isol_pils)}): {', '.join(_isol_pils[:8])}{'…' if len(_isol_pils)>8 else ''}")
+        if _pil_cont:
+            st.caption(f"Sapata corrida ({len(_pil_cont)}): {', '.join(_pil_cont)}")
+
+        if st.button("✅ Aplicar configuração de pilares", key="btn_apply_col_config"):
+            st.session_state["col_config"] = {
+                "n": _n_pil, "n_pisos": _n_pis,
+                "h_cave": _h_cav, "h_piso": _h_pis,
+                "b": _b_col, "h": _h_col,
+            }
+            st.session_state["cols_in_cont_footing"] = list(_pil_cont)
+            st.rerun()
+
+        if _cc_cur:
+            _h_tot_info = _cc_cur.get("h_cave", 2.8) + max(0, _cc_cur.get("n_pisos", 2) - 1) * _cc_cur.get("h_piso", 2.8)
+            st.info(f"✅ {_cc_cur['n']} pilares | {_cc_cur['n_pisos']} pisos | "
+                    f"H≈{_h_tot_info:.2f}m | {_cc_cur['b']}×{_cc_cur['h']}cm")
+            if st.button("🗑 Limpar configuração de pilares", key="btn_clear_col_config"):
+                st.session_state["col_config"] = None
+                st.session_state["cols_in_cont_footing"] = []
+                st.rerun()
+
+    # ── Sapatas ───────────────────────────────────────────────────────────────
+    with st.expander("⬛ Sapatas — tipo por pilar"):
+        st.caption("Aqui podes ver e ajustar quais os pilares com sapata isolada vs sapata corrida do muro da cave. "
+                   "Define primeiro os Pilares acima.")
+        _cc2 = st.session_state.get("col_config")
+        _cont2 = st.session_state.get("cols_in_cont_footing", [])
+        if _cc2:
+            _all2 = [f"P{i}" for i in range(1, _cc2["n"] + 1)]
+            _new_cont2 = st.multiselect(
+                "Pilares em sapata corrida do muro cave",
+                options=_all2,
+                default=[_p for _p in _cont2 if _p in _all2],
+                key="sapatas_cont_pils",
+            )
+            if _new_cont2 != _cont2:
+                st.session_state["cols_in_cont_footing"] = list(_new_cont2)
+                st.rerun()
+            _isol2 = [_p for _p in _all2 if _p not in _new_cont2]
+            st.caption(f"**Sapatas isoladas ({len(_isol2)}):** {', '.join(_isol2)}")
+            if _new_cont2:
+                st.caption(f"**Sapata corrida ({len(_new_cont2)}):** {', '.join(_new_cont2)}")
+        else:
+            st.info("Define o número de pilares na secção 🏛️ Pilares.")
 
     # ── Lajes ────────────────────────────────────────────────────────────────
     _pavinorte_sb = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
@@ -593,10 +666,27 @@ if run_btn:
                 col_path = save_upload(col_csv)
                 beam_path = save_upload(beam_csv)
                 slab_path = save_upload(slab_csv)
-                if st.session_state.get("predim_cols") and not col_path:
-                    columns = st.session_state["predim_cols"]
-                elif col_path:
+                if col_path:
                     columns = CSVGeometryImporter().load_columns(col_path)
+                elif st.session_state.get("predim_cols"):
+                    columns = st.session_state["predim_cols"]
+                elif st.session_state.get("col_config"):
+                    import math as _math
+                    _cc3 = st.session_state["col_config"]
+                    _n3 = _cc3["n"]
+                    _cpr = max(1, _math.ceil(_math.sqrt(_n3)))
+                    _h_col_total = _cc3["h_cave"]   # governing height for buckling = cave story
+                    columns = [
+                        Column(
+                            id=f"P{_i3+1}",
+                            x=float(_i3 % _cpr) * 5.0,
+                            y=float(_i3 // _cpr) * 5.0,
+                            width_cm=float(_cc3["b"]),
+                            depth_cm=float(_cc3["h"]),
+                            height_m=_h_col_total,
+                        )
+                        for _i3 in range(_n3)
+                    ]
                 else:
                     columns = build_demo_columns()
                 beams = CSVBeamImporter().load_beams(beam_path, columns) if beam_path else []
@@ -1060,6 +1150,21 @@ with tab_vigas:
 
 # ── Pilares ───────────────────────────────────────────────────────────────────
 with tab_pilares:
+    # Building heights info banner
+    _cc_tab = st.session_state.get("col_config")
+    if _cc_tab:
+        _h_tot_tab = _cc_tab["h_cave"] + max(0, _cc_tab["n_pisos"] - 1) * _cc_tab["h_piso"]
+        _cont_tab = st.session_state.get("cols_in_cont_footing", [])
+        _info_cols = st.columns(4)
+        _info_cols[0].metric("Pilares", f"{_cc_tab['n']} (P1–P{_cc_tab['n']})")
+        _info_cols[1].metric("Pisos", _cc_tab["n_pisos"])
+        _info_cols[2].metric("H cave→piso1", f"{_cc_tab['h_cave']:.2f} m")
+        _info_cols[3].metric("H entre pisos", f"{_cc_tab['h_piso']:.2f} m")
+        if _cont_tab:
+            st.caption(f"Sapata corrida: {', '.join(_cont_tab)} | "
+                       f"Sapatas isoladas: {', '.join(c.id for c in p.columns if c.id not in _cont_tab)}")
+        st.divider()
+
     # Editor: set stops_at per column
     with st.expander("✏️ Editar nível dos pilares (termina em piso / cobertura)"):
         st.caption("Pilares que terminam na laje de piso não aparecem no nível de Cobertura do quadro.")
@@ -1242,6 +1347,37 @@ with tab_lajes:
 
 # ── Sapatas ───────────────────────────────────────────────────────────────────
 with tab_sapatas:
+    # ── Sapata corrida do muro da cave ────────────────────────────────────────
+    _cont_col_set = set(st.session_state.get("cols_in_cont_footing", []))
+    _rw_ids = [rw.id for rw in (p.retaining_walls or [])]
+    _sw_ids = [sw.id for sw in (p.walls or [])]
+    _all_wall_ids = _rw_ids + _sw_ids
+
+    if _cont_col_set or _all_wall_ids:
+        with st.expander("🔗 Sapata corrida do muro da cave", expanded=True):
+            _sf_col1, _sf_col2 = st.columns(2)
+            with _sf_col1:
+                st.markdown("**Pilares na sapata corrida:**")
+                if _cont_col_set:
+                    for _cp in sorted(_cont_col_set):
+                        st.caption(f"• {_cp}")
+                else:
+                    st.caption("Nenhum — define na barra lateral.")
+            with _sf_col2:
+                st.markdown("**Muro que descarrega:**")
+                if _all_wall_ids:
+                    for _wid in _all_wall_ids:
+                        st.caption(f"• {_wid}")
+                else:
+                    st.caption("Sem muros definidos.")
+        st.divider()
+
+    # ── Sapatas isoladas ──────────────────────────────────────────────────────
+    _isol_ftgs = [f for f in p.footings if f.related_column_id not in _cont_col_set]
+    _cont_ftgs = [f for f in p.footings if f.related_column_id in _cont_col_set]
+    if _cont_ftgs:
+        st.caption(f"ℹ️ {len(_cont_ftgs)} pilar(es) em sapata corrida ({', '.join(f.related_column_id for f in _cont_ftgs)}) — mostrados separadamente acima.")
+
     # Editor: toggle footing type (concentric ↔ eccentric)
     _ftg_needs_ecc = [f for f in p.footings if f.result and f.result.needs_balance_beam]
     with st.expander(f"✏️ Editar orientação das sapatas — {len(_ftg_needs_ecc)} sapata(s) com viga de equilíbrio"):
