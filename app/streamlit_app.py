@@ -647,7 +647,7 @@ with st.sidebar:
                                                    if t["portico_id"] != _ppid]
                 _rebuild_psmap(st.session_state.portico_tramos, st.session_state)
                 st.rerun()
-            for _tr in sorted(_tramos, key=lambda t: t["tramo"]):
+            for _tidx, _tr in enumerate(sorted(_tramos, key=lambda t: t["tramo"])):
                 _ca, _cb = st.columns([9, 1])
                 _cc_lbl = (f"  carga={_tr.get('carga_concentrada_kn',0):.0f}kN"
                            if _tr.get("carga_concentrada_kn", 0) else "")
@@ -655,7 +655,7 @@ with st.sidebar:
                     f"  T{_tr['tramo']}: {_tr.get('pilar_esq','—')}→{_tr.get('pilar_dir','—')}  "
                     f"{_tr.get('span_m',0):.2f}m{_cc_lbl}"
                 )
-                if _cb.button("🗑", key=f"del_ptr_{_ppid}_{_tr['tramo']}", help="Apagar tramo"):
+                if _cb.button("🗑", key=f"del_ptr_{_ppid}_{_tidx}", help="Apagar tramo"):
                     st.session_state.portico_tramos = [
                         t for t in _pt_list
                         if not (t["portico_id"] == _ppid and t["tramo"] == _tr["tramo"])
