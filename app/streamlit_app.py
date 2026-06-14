@@ -178,7 +178,12 @@ with st.sidebar:
     if _proj_now:
         st.success(f"**{_proj_now.name}**", icon="📂")
         from core.persistence import save_project as _save_proj
-        _proj_bytes = _save_proj(_proj_now)
+        _ss_to_save = {
+            "col_config":           st.session_state.get("col_config"),
+            "cols_in_cont_footing": st.session_state.get("cols_in_cont_footing", []),
+            "portico_slab_map":     st.session_state.get("portico_slab_map", {}),
+        }
+        _proj_bytes = _save_proj(_proj_now, session_state=_ss_to_save)
         _safe_name  = _proj_now.name.replace(" ", "_").replace("/", "-")
         st.download_button(
             "💾  Guardar projeto + resultados (.raptor)",
@@ -221,16 +226,17 @@ with st.sidebar:
                         st.session_state.manual_flat_slabs = list(getattr(_loaded, 'flat_slabs', []) or [])
                         st.session_state.manual_stairs    = list(getattr(_loaded, 'stairs', []) or [])
                         st.session_state.manual_walls     = list(getattr(_loaded, 'walls', []) or [])
-                        # Reconstruir portico_slab_map a partir de beam.supported_slab_ids
-                        _psmap_r = {}
-                        for _lb in (_loaded.beams or []):
-                            if getattr(_lb, 'beam_type', None) == BeamType.FRAME:
-                                _lp = (getattr(_lb, 'portico_id', '') or '').strip() or _lb.id
-                                for _ls in getattr(_lb, 'supported_slab_ids', []):
-                                    _psmap_r.setdefault(_lp, [])
-                                    if _ls not in _psmap_r[_lp]:
-                                        _psmap_r[_lp].append(_ls)
-                        st.session_state.portico_slab_map = _psmap_r
+                        # Restaurar session_state guardado (col_config, pórticos)
+                        _ss_saved = _raw_json.get("session_state", {})
+                        if _ss_saved.get("col_config"):
+                            st.session_state.col_config = _ss_saved["col_config"]
+                        if _ss_saved.get("cols_in_cont_footing"):
+                            st.session_state.cols_in_cont_footing = _ss_saved["cols_in_cont_footing"]
+                        if _ss_saved.get("portico_slab_map"):
+                            st.session_state.portico_slab_map = _ss_saved["portico_slab_map"]
+                        else:
+                            # Ficheiro antigo: limpar pórticos para o utilizador definir de novo
+                            st.session_state.portico_slab_map = {}
                         st.session_state["_raptor_loaded_id"] = _up_uid
                         _n_rw = len(st.session_state.manual_retaining_walls)
                         _n_sl = len(st.session_state.manual_slabs)
@@ -590,6 +596,9 @@ with st.sidebar:
     with st.expander(f"🏗️ Pórticos — lajes atribuídas ({_n_atrib})"):
         st.caption("Define qual o ID do pórtico (igual ao campo 'portico_id' no CSV de vigas) "
                    "e que lajes apoiam nele.")
+        if _psmap_sb and st.button("🗑 Limpar todos os pórticos", key="btn_clear_psmap"):
+            st.session_state.portico_slab_map = {}
+            st.rerun()
         # Mostrar atribuições existentes
         for _pp_id in list(_psmap_sb.keys()):
             _pp_cur = _psmap_sb[_pp_id]

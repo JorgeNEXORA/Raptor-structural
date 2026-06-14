@@ -28,12 +28,14 @@ class _Enc(json.JSONEncoder):
         return super().default(obj)
 
 
-def save_project(project: Project) -> bytes:
+def save_project(project: Project, session_state: dict | None = None) -> bytes:
     """Serialise Project to UTF-8 JSON bytes (.raptor file)."""
     payload = {
         "raptor_version": FILE_VERSION,
         "project": dataclasses.asdict(project),
     }
+    if session_state:
+        payload["session_state"] = session_state
     return json.dumps(payload, ensure_ascii=False, indent=2, cls=_Enc).encode("utf-8")
 
 
