@@ -4,11 +4,12 @@ from analysis.combinations import CombinationEngine
 from analysis.deflections import slab_strip_inertia_m4, simply_supported_udl_deflection_mm, span_limit_mm
 from analysis.serviceability import estimate_crack_width_mm, steel_stress_from_moment
 try:
-    from config.slab_catalog import CATALOG, SlabCatalogEntry
+    from config.slab_catalog import CATALOG, SlabCatalogEntry, auto_select_slab
     _CATALOG_AVAILABLE = bool(CATALOG)
 except Exception:
     CATALOG = {}
     _CATALOG_AVAILABLE = False
+    def auto_select_slab(*a, **kw): return None
 
 # ── Marcus table for simply-supported two-way slabs ──────────────────────────
 # ratio = Ly/Lx (≥ 1)  →  (αx, αy)   where MEd,x = αx·qd·Lx²  (kNm/m)
@@ -90,16 +91,37 @@ class SlabAnalyzer:
         psi1_slab = getattr(slab, "psi1", None)
         if psi1_slab is not None:
             self.comb.psi2 = float(psi1_slab)
+
+        lx = slab.span_m
+
+        # Auto-seleção ao estilo Pavineiva quando catalog_id não está definido
+        # e Rev/Div estão definidos — PP vem do catálogo iterativamente
+        _auto_entry = None
+        if not slab.catalog_id and (slab.rev_kn_m2 > 0 or slab.div_kn_m2 > 0):
+            _auto_entry = auto_select_slab(
+                span_m=lx,
+                rev_kn_m2=slab.rev_kn_m2,
+                div_kn_m2=slab.div_kn_m2,
+                qk_kn_m2=qk,
+                gamma_g=self.comb.gamma_g,
+                gamma_q=self.comb.gamma_q,
+            )
+            if _auto_entry and _auto_entry.pesom2 > 0:
+                gk = _auto_entry.pesom2 + slab.rev_kn_m2 + slab.div_kn_m2
+                # Actualiza espessura na laje com a selecionada
+                slab.catalog_id = _auto_entry.nome
+                slab.thickness_cm = _auto_entry.altura_cm
+                slab.effective_depth_cm = max(_auto_entry.altura_cm - 3.0, 5.0)
+
         sd_uls = self.comb.uls_fundamental(gk, qk)
         sd_rare = self.comb.sls_rare(gk, qk)
         sd_freq = self.comb.sls_frequent(gk, qk)
         sd_qp   = self.comb.sls_quasi_permanent(gk, qk)
-        lx = slab.span_m
 
         msd = sd_uls * lx ** 2 / 8.0
         vsd = sd_uls * lx / 2.0
 
-        # MRd / VRd from catalog if available
+        # MRd / VRd from catalog (can be the auto-selected entry)
         entry = CATALOG.get(slab.catalog_id) if slab.catalog_id else None
         if entry:
             mrd = entry.mrd_knm_m

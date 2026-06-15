@@ -142,15 +142,7 @@ def select_slab(
     safety: float = 1.0,
     prefer_block: Optional[str] = None,
 ) -> Optional[SlabCatalogEntry]:
-    """
-    Return the lightest catalog entry that satisfies:
-        MRd ≥ med_knm_m × safety
-        VRd ≥ ved_kn_m × safety
-        altura_cm ≤ max_height_cm
-
-    Optionally filter by block type substring (e.g. "BL40x20").
-    Returns None if no entry satisfies the constraints.
-    """
+    """Return the lightest catalog entry that satisfies MRd ≥ MEd and VRd ≥ VEd."""
     candidates: List[SlabCatalogEntry] = []
     for entry in CATALOG.values():
         if entry.altura_cm > max_height_cm:
@@ -159,11 +151,46 @@ def select_slab(
             continue
         if entry.mrd_knm_m >= med_knm_m * safety and entry.vrd_kn_m >= ved_kn_m * safety:
             candidates.append(entry)
-
     if not candidates:
         return None
-    # Choose minimum weight (pesom2), break ties by minimum height
     return min(candidates, key=lambda e: (e.pesom2, e.altura_cm))
+
+
+def auto_select_slab(
+    span_m: float,
+    rev_kn_m2: float,
+    div_kn_m2: float,
+    qk_kn_m2: float,
+    gamma_g: float = 1.35,
+    gamma_q: float = 1.50,
+    max_height_cm: float = 50.0,
+    prefer_vigota: Optional[str] = None,
+) -> Optional[SlabCatalogEntry]:
+    """
+    Seleção automática ao estilo Pavineiva:
+      Para cada laje do catálogo (da mais leve para a mais pesada):
+        gk = PP_laje + rev + div
+        qd = γG·gk + γQ·qk
+        MEd = qd·L²/8,  VEd = qd·L/2
+        → aceita a primeira laje onde MRd ≥ MEd e VRd ≥ VEd
+    O PP muda com cada tipo de laje, por isso é iterativo.
+    """
+    # Sort by pesom2 ascending, then altura_cm ascending (lightest first)
+    sorted_entries = sorted(
+        [e for e in CATALOG.values()
+         if e.pesom2 > 0 and e.mrd_knm_m > 0 and e.vrd_kn_m > 0
+         and e.altura_cm <= max_height_cm
+         and (not prefer_vigota or prefer_vigota in e.vigota)],
+        key=lambda e: (e.pesom2, e.altura_cm),
+    )
+    for entry in sorted_entries:
+        gk = entry.pesom2 + rev_kn_m2 + div_kn_m2
+        qd = gamma_g * gk + gamma_q * qk_kn_m2
+        med = qd * span_m ** 2 / 8.0
+        ved = qd * span_m / 2.0
+        if entry.mrd_knm_m >= med and entry.vrd_kn_m >= ved:
+            return entry
+    return None
 
 
 def catalog_names() -> List[str]:

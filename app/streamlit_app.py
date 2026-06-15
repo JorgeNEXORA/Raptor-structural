@@ -708,15 +708,17 @@ with st.sidebar:
             _sl_lvl_sb  = _sb2.selectbox("Nível", _sl_lvl_opts, index=_sl_lvl_idx)
             _sl_dir_sb  = _sb2.selectbox("Direção", _sl_dir_opts, index=_sl_dir_idx)
             _sl_zona_sb = _sb2.selectbox("Zona (Qk)", _sl_zona_opts)
-            _sl_cat_sb  = st.selectbox("Catálogo Pavineiva", _cat_sb_opts, index=_sl_cat_idx)
             # Cargas separadas ao estilo Pavineiva
             _sc1, _sc2, _sc3 = st.columns(3)
             _sl_rev_sb = _sc1.number_input("Rev. (kN/m²)", value=float(_pslab.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1,
-                                            help="Revestimentos — separado do PP do catálogo")
+                                            help="Revestimentos")
             _sl_div_sb = _sc2.number_input("Div. (kN/m²)", value=float(_pslab.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1,
                                             help="Divisórias")
-            _sl_psi1_sb = _sc3.number_input("ψ₁ (SLS)", value=float(_pslab.get("psi1", 0.3)), min_value=0.0, max_value=1.0, step=0.1,
-                                             help="Coef. SLS quasi-permanente (0.30 habitável, 0.50 escritórios, 0.70 armazém)")
+            _sl_psi1_sb = _sc3.number_input("ψ₁", value=float(_pslab.get("psi1", 0.3)), min_value=0.0, max_value=1.0, step=0.1,
+                                             help="SLS quasi-permanente (0.30 habitável, 0.70 armazém)")
+            st.caption("🔄 Laje selecionada automaticamente pelo Pavineiva (PP do catálogo + Rev + Div)")
+            _sl_cat_sb  = st.selectbox("Forçar laje (opcional)", _cat_sb_opts, index=_sl_cat_idx,
+                                        help="Deixa '(automático)' para o programa escolher a laje mais económica")
             _slab_lbl = "✅ Atualizar laje" if _pslab else "➕ Adicionar laje"
             if st.form_submit_button(_slab_lbl):
                 _type_map_sb = {"Aligeirada": "ribbed", "Maciça 1D": "one_way",
