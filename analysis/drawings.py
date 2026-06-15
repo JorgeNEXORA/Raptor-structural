@@ -2734,6 +2734,7 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
 
     y_cursor = -1.5
     frame_idx = 0
+    max_x_drawn = 0.0
 
     for pid in pid_order:
         tramos = pt_groups[pid]
@@ -2804,6 +2805,10 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
             frame_idx += 1
             _dxf_frame_elevation(msp, direction, bms_with_results, col_map,
                                  frame_idx, y_cursor, label=pid)
+            _fw = sum(abs(col_map[b.end_node].x - col_map[b.start_node].x)
+                      for b in bms_with_results
+                      if b.start_node in col_map and b.end_node in col_map) + 4.0
+            max_x_drawn = max(max_x_drawn, _fw)
             y_cursor -= (frame_h + GAP)
             continue
 
@@ -2866,12 +2871,19 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
                             f'Total = {x_all[-1]-x_all[0]:.2f} m', 'COTAS', TH_MD)
         _dxf_text(msp, pid.upper(), total_w / 2, Y0 + floor_h + 1.05, TH_LG,
                   'TEXTO', 'CENTER', color=7)
+        max_x_drawn = max(max_x_drawn, total_w + 2.0)
         frame_idx += 1
         y_cursor -= (floor_h + GAP + 1.5)
 
     # ── Title block below all frames ─────────────────────────────────────────
     _dxf_title_block(msp, project, "ALCADOS DE PORTICOS", "1:50",
                      x0=0.0, y0=y_cursor)
+
+    # ── Update DXF extents so viewer shows all frames ─────────────────────────
+    ext_w = max(max_x_drawn, 20.0)
+    doc.header['$EXTMIN'] = (ext_w * -0.05, y_cursor - 2.0, 0)
+    doc.header['$EXTMAX'] = (ext_w *  1.05, 1.0, 0)
+
     out = io.StringIO()
     doc.write(out)
     return out.getvalue().encode('utf-8')

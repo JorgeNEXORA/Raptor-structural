@@ -10,7 +10,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from core.model import BeamType, Column, ContinuousFooting, FlatSlab, Project, RetainingWall, ShearWall, SlabPanel, SlabType, StairSlab
+from core.model import Beam, BeamType, Column, ContinuousFooting, FlatSlab, Project, RetainingWall, ShearWall, SlabPanel, SlabType, StairSlab
 from analysis.predim import ColumnPreDimensioner
 from config.loads import (
     LoadConfigurator, LAJE, ISOLAMENTO, ACABAMENTO_PISO, ACABAMENTO_COB,
@@ -1183,6 +1183,45 @@ if run_btn:
                     columns = build_demo_columns()
                 beams = CSVBeamImporter().load_beams(beam_path, columns) if beam_path else []
                 slabs = CSVSlabImporter().load_slabs(slab_path) if slab_path else []
+
+            # Build beams from portico_tramos when none imported, or assign portico_id
+            _pt_for_beams = st.session_state.get("portico_tramos", [])
+            if _pt_for_beams:
+                if not beams:
+                    for _tr in _pt_for_beams:
+                        _pe  = (_tr.get("pilar_esq") or "").strip()
+                        _pdi = (_tr.get("pilar_dir")  or "").strip()
+                        if not _pe or not _pdi:
+                            continue
+                        _bw   = float(_tr.get("secao_b_cm") or 25)
+                        _bh   = float(_tr.get("secao_h_cm") or 40)
+                        _pid_s = (_tr.get("portico_id") or "").strip()
+                        _trn  = int(_tr.get("tramo") or 1)
+                        _sp   = float(_tr.get("span_m") or 5.0)
+                        beams.append(Beam(
+                            id=f"V_{_pid_s}_{_trn}".replace(" ", "_"),
+                            start_node=_pe, end_node=_pdi,
+                            width_cm=_bw, height_cm=_bh,
+                            effective_depth_cm=max(_bh - 5.0, 5.0),
+                            span_m=_sp,
+                            beam_type=BeamType.FRAME,
+                            portico_id=_pid_s,
+                        ))
+                else:
+                    _ep_pid_map: dict = {}
+                    for _tr in _pt_for_beams:
+                        _pe  = (_tr.get("pilar_esq") or "").strip()
+                        _pdi = (_tr.get("pilar_dir")  or "").strip()
+                        _pid_s = (_tr.get("portico_id") or "").strip()
+                        if _pe and _pdi and _pid_s:
+                            _ep_pid_map[frozenset([_pe, _pdi])] = _pid_s
+                    for _b in beams:
+                        if not _b.portico_id:
+                            _key = frozenset([
+                                (_b.start_node or "").strip(),
+                                (_b.end_node   or "").strip(),
+                            ])
+                            _b.portico_id = _ep_pid_map.get(_key, "")
 
             slab_loads_path = save_upload(slab_loads_csv)
             slab_loads = (
