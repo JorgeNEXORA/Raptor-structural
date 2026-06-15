@@ -1550,6 +1550,8 @@ def _dxf_title_block(msp, project, drawing_title: str, scale: str, x0=0.0, y0=-2
     ]
     for k, line in enumerate(lines):
         _dxf_text(msp, line, x0, y0 - k * TH * 1.4, TH, 'TEXTO', 'LEFT', color=7)
+    _dxf_text(msp, 'v2026.06.15b  cover=30mm', x0, y0 - len(lines) * TH * 1.4, TH * 0.7,
+              'TEXTO', 'LEFT', color=8)
 
 
 def _dxf_col_square(msp, col, x_c, y_c, scale=1.0):
