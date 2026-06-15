@@ -1377,8 +1377,8 @@ def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off, label
         cy_b  = cs_y_bot
         # rectangle
         _dxf_rect(msp, cx - cs_w/2, cy_b, cs_w, cs_h_d, 'CORTES', lw=25)
-        # stirrup inner
-        cov_s = cs_w * 0.10
+        # stirrup inner — cover scaled to cross-section display
+        cov_s = cover * cs_scale
         _dxf_rect(msp, cx - cs_w/2 + cov_s, cy_b + cov_s,
                   cs_w - 2*cov_s, cs_h_d - 2*cov_s, 'ESTRIBOS', lw=13)
         # bottom bar circles
@@ -2675,13 +2675,13 @@ def draw_wall_detail_dxf(project: 'Project') -> bytes:
 # ── Alçados de Pórticos DXF ──────────────────────────────────────────────────
 
 def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> bytes:
-    """DXF elevation drawings for each pórtico with full reinforcement detail.
+    """DXF elevation drawings — one frame per user-defined pórtico.
 
-    Uses _group_beams_into_frames (geometric grouping) to find frames, then
-    calls _dxf_frame_elevation which draws stirrups, bars, cross-sections,
-    Msd/Vsd. Falls back to a simple outline when no calculation results exist.
-    Attempts to label each frame with the user-defined pórtico ID by matching
-    the set of columns involved.
+    For each pórtico in portico_tramos, finds matching beams by column-ID
+    matching (start_node/end_node vs pilar_esq/pilar_dir). When beams have
+    calculation results, draws full reinforcement via _dxf_frame_elevation.
+    Otherwise draws a simple geometry outline from the tramo data.
+    All pórticos appear on the same DXF, stacked vertically.
     """
     try:
         import ezdxf
@@ -2689,108 +2689,149 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
         return b""
 
     col_map = {c.id: c for c in project.columns}
-    beams_with_results = [b for b in project.beams if b.result]
 
-    # Group tramos by portico_id for labelling and fallback outline
+    # ── Build beam lookups ────────────────────────────────────────────────────
+    # 1. by portico_id attribute on the beam
+    beams_by_pid: dict = {}
+    for b in project.beams:
+        pid = (getattr(b, 'portico_id', '') or '').strip()
+        if pid:
+            beams_by_pid.setdefault(pid, []).append(b)
+
+    # 2. by frozenset of endpoint IDs
+    beam_by_endpoints: dict = {}
+    for b in project.beams:
+        sn = (b.start_node or '').strip()
+        en = (b.end_node   or '').strip()
+        if sn and en:
+            beam_by_endpoints[frozenset([sn, en])] = b
+
+    # ── Collect ordered unique pórtico IDs ───────────────────────────────────
     pt_groups: dict = {}
+    pid_order: list = []
     for tr in portico_tramos:
-        pid = tr.get("portico_id", "?")
+        pid = tr.get('portico_id', '?')
+        if pid not in pt_groups:
+            pid_order.append(pid)
         pt_groups.setdefault(pid, []).append(tr)
 
-    # ── Full reinforcement drawing ────────────────────────────────────────────
-    if beams_with_results:
-        frames = _group_beams_into_frames(beams_with_results, col_map)
-        if frames:
-            # Build a lookup: frozenset of column IDs → pid, for labelling
-            pid_col_sets: dict = {}
-            for pid, tramos in pt_groups.items():
-                ids = set()
-                for tr in tramos:
-                    for k in ("pilar_esq", "pilar_dir"):
-                        v = (tr.get(k) or "").strip()
-                        if v:
-                            ids.add(v)
-                if ids:
-                    pid_col_sets[frozenset(ids)] = pid
+    # ── DXF document setup ───────────────────────────────────────────────────
+    doc = ezdxf.new('R2010')
+    doc.header['$INSUNITS']   = 6
+    doc.header['$MEASUREMENT'] = 1
+    if 'DASHED' not in doc.linetypes:
+        doc.linetypes.add('DASHED', pattern=[0.3, -0.15])
+    for lname, color in [
+        ('VIGAS', 7), ('PILARES', 8), ('ARMADURA_INF', 1), ('ARMADURA_SUP', 2),
+        ('ESTRIBOS', 3), ('CORTES', 5), ('COTAS', 1), ('TEXTO', 7),
+    ]:
+        if lname not in doc.layers:
+            doc.layers.add(lname, color=color)
+    msp = doc.modelspace()
 
-            doc = ezdxf.new('R2010')
-            doc.header['$INSUNITS'] = 6
-            doc.header['$MEASUREMENT'] = 1
-            if 'DASHED' not in doc.linetypes:
-                doc.linetypes.add('DASHED', pattern=[0.3, -0.15])
-            for lname, color in [
-                ('VIGAS', 7), ('PILARES', 8), ('ARMADURA_INF', 1), ('ARMADURA_SUP', 2),
-                ('ESTRIBOS', 3), ('CORTES', 5), ('COTAS', 1), ('TEXTO', 7),
-            ]:
-                if lname not in doc.layers:
-                    doc.layers.add(lname, color=color)
-            msp = doc.modelspace()
-
-            y_cursor = -1.5
-            for idx, (auto_label, direction, bms) in enumerate(frames):
-                # Try to find matching pórtico label by column set
-                frame_col_ids = {nid for b in bms for nid in (b.start_node, b.end_node) if nid}
-                label = pid_col_sets.get(frozenset(frame_col_ids), auto_label)
-
-                bh_i = bms[0].height_cm / 100
-                ch_i = bh_i * 4
-                for b in bms:
-                    for nid in [b.start_node, b.end_node]:
-                        if nid in col_map:
-                            ch_i = col_map[nid].height_m
-                            break
-                    else:
-                        continue
-                    break
-                cst_i   = ch_i * 0.45
-                csb_i   = ch_i * 0.35
-                cs_h_i  = bh_i * 3.5
-                frame_h = cst_i + bh_i + csb_i + cs_h_i + 0.60
-
-                _dxf_frame_elevation(msp, direction, bms, col_map,
-                                     idx + 1, y_cursor, label=label)
-                y_cursor -= (frame_h + 2.0)
-
-            # Title block below all frames (y_cursor already advanced past last frame)
-            _dxf_title_block(msp, project, "ALCADOS DE PORTICOS", "1:50",
-                             x0=0.0, y0=y_cursor)
-            out = io.StringIO()
-            doc.write(out)
-            return out.getvalue().encode('utf-8')
-
-    # ── Fallback: simple outline (no calculation results yet) ─────────────────
-    doc, msp = _dxf_new_doc()
-    if not doc:
-        return b""
-
-    col_dim_map = {c.id: (float(c.width_cm), float(c.depth_cm), float(c.height_m))
-                   for c in project.columns}
     TH_LG = 0.175; TH_MD = 0.125; TH_SM = 0.100
-    COL_W = 0.25; BEAM_H_MIN = 0.20; GAP = 2.5
-    Y0 = 0.0
+    COL_W = 0.25;  BEAM_H_MIN = 0.20; GAP = 2.0
 
-    for pid, tramos in pt_groups.items():
-        tramos_s = sorted(tramos, key=lambda x: x["tramo"])
+    y_cursor = -1.5
+    frame_idx = 0
+
+    for pid in pid_order:
+        tramos = pt_groups[pid]
+        tramos_s = sorted(tramos, key=lambda x: x.get('tramo', 0))
+
+        # ── Collect column IDs for this pórtico ──────────────────────────────
+        pilar_ids: set = set()
+        for tr in tramos_s:
+            for k in ('pilar_esq', 'pilar_dir'):
+                v = (tr.get(k) or '').strip()
+                if v:
+                    pilar_ids.add(v)
+
+        # ── Find matching beams (3 strategies) ───────────────────────────────
+        frame_beams: list = []
+
+        # Strategy 1: portico_id attribute
+        if pid in beams_by_pid:
+            frame_beams = list(beams_by_pid[pid])
+
+        # Strategy 2: endpoint pair matching from tramos
+        if not frame_beams:
+            for tr in tramos_s:
+                pe  = (tr.get('pilar_esq') or '').strip()
+                pdi = (tr.get('pilar_dir')  or '').strip()
+                if pe and pdi:
+                    b = beam_by_endpoints.get(frozenset([pe, pdi]))
+                    if b and b not in frame_beams:
+                        frame_beams.append(b)
+
+        # Strategy 3: any beam whose both endpoints are in pilar_ids
+        if not frame_beams and pilar_ids:
+            for b in project.beams:
+                sn = (b.start_node or '').strip()
+                en = (b.end_node   or '').strip()
+                if sn in pilar_ids and en in pilar_ids and b not in frame_beams:
+                    frame_beams.append(b)
+
+        bms_with_results = [b for b in frame_beams if b.result]
+
+        # ── Determine direction from column positions ─────────────────────────
+        frame_col_ids = [c for c in pilar_ids if c in col_map]
+        if not frame_col_ids and bms_with_results:
+            frame_col_ids = [nid for b in bms_with_results
+                             for nid in (b.start_node, b.end_node)
+                             if nid and nid in col_map]
+        if frame_col_ids:
+            xs = [col_map[c].x for c in frame_col_ids]
+            ys = [col_map[c].y for c in frame_col_ids]
+            direction = 'X' if (max(xs) - min(xs)) >= (max(ys) - min(ys)) else 'Y'
+        else:
+            direction = 'X'
+
+        # ── FULL REINFORCEMENT path ───────────────────────────────────────────
+        if bms_with_results:
+            bh_i  = bms_with_results[0].height_cm / 100
+            ch_i  = 3.0
+            for b in bms_with_results:
+                for nid in [b.start_node, b.end_node]:
+                    if nid and nid in col_map:
+                        ch_i = col_map[nid].height_m
+                        break
+                else:
+                    continue
+                break
+            frame_h = ch_i * 0.45 + bh_i + ch_i * 0.35 + bh_i * 3.5 + 0.60
+
+            frame_idx += 1
+            _dxf_frame_elevation(msp, direction, bms_with_results, col_map,
+                                 frame_idx, y_cursor, label=pid)
+            y_cursor -= (frame_h + GAP)
+            continue
+
+        # ── SIMPLE OUTLINE fallback (no results yet) ──────────────────────────
+        col_dim_map = {c.id: (float(c.width_cm), float(c.depth_cm), float(c.height_m))
+                       for c in project.columns}
         col_x: dict = {}
         x_cur = 0.0
         for tr in tramos_s:
-            pe  = (tr.get("pilar_esq") or "").strip()
-            pdi = (tr.get("pilar_dir")  or "").strip()
+            pe  = (tr.get('pilar_esq') or '').strip()
+            pdi = (tr.get('pilar_dir')  or '').strip()
             if pe  and pe  not in col_x: col_x[pe]  = x_cur
-            x_cur += float(tr.get("span_m") or 5.0)
+            x_cur += float(tr.get('span_m') or 5.0)
             if pdi and pdi not in col_x: col_x[pdi] = x_cur
         total_w = x_cur
+        if total_w <= 0:
+            continue
 
         floor_h = 3.0
         for tr in tramos_s:
-            if tr.get("altura_m") and float(tr["altura_m"]) >= 1.0:
-                floor_h = float(tr["altura_m"]); break
-        if floor_h == 3.0:
-            for cid in col_x:
-                if cid in col_dim_map and col_dim_map[cid][2] >= 1.0:
-                    floor_h = col_dim_map[cid][2]; break
+            if tr.get('altura_m') and float(tr['altura_m']) >= 1.0:
+                floor_h = float(tr['altura_m']); break
+        for cid in col_x:
+            if cid in col_dim_map and col_dim_map[cid][2] >= 1.0:
+                floor_h = col_dim_map[cid][2]; break
 
-        msp.add_line((-0.8, Y0), (total_w + 0.3, Y0),
+        Y0 = y_cursor
+        msp.add_line((0.0, Y0), (total_w, Y0),
                      dxfattribs={'layer': 'VIGAS', 'lineweight': 25})
         for cid, cx in col_x.items():
             ch = col_dim_map[cid][2] if (cid in col_dim_map and col_dim_map[cid][2] >= 1.0) else floor_h
@@ -2799,31 +2840,38 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
             _dxf_text(msp, cid, cx, Y0 - 0.22, TH_MD, 'TEXTO', 'CENTER', color=7)
             if cid in col_dim_map:
                 bw_c, bd_c, _ = col_dim_map[cid]
-                _dxf_text(msp, f'{int(bw_c)}x{int(bd_c)}', cx, Y0 - 0.40, TH_SM, 'TEXTO', 'CENTER', color=8)
-        _dxf_dim_vertical(msp, -0.55, Y0, Y0 + floor_h, 0.12, f'h={floor_h:.2f}m', 'COTAS', TH_MD)
+                _dxf_text(msp, f'{int(bw_c)}x{int(bd_c)}', cx, Y0 - 0.40, TH_SM,
+                          'TEXTO', 'CENTER', color=8)
+        _dxf_dim_vertical(msp, -0.55, Y0, Y0 + floor_h, 0.12,
+                          f'h={floor_h:.2f}m', 'COTAS', TH_MD)
         for tr in tramos_s:
-            pe  = (tr.get("pilar_esq") or "").strip()
-            pdi = (tr.get("pilar_dir")  or "").strip()
+            pe  = (tr.get('pilar_esq') or '').strip()
+            pdi = (tr.get('pilar_dir')  or '').strip()
             if pe not in col_x or pdi not in col_x: continue
-            x1, x2  = col_x[pe], col_x[pdi]
-            bh_m    = max(float(tr.get("secao_h_cm") or 40) / 100, BEAM_H_MIN)
-            bb_cm   = float(tr.get("secao_b_cm") or 25)
-            bh_cm   = float(tr.get("secao_h_cm") or 40)
-            span    = float(tr.get("span_m") or abs(x2 - x1))
-            mid_x   = (x1 + x2) / 2
-            bt      = Y0 + floor_h
+            x1, x2 = col_x[pe], col_x[pdi]
+            bh_m   = max(float(tr.get('secao_h_cm') or 40) / 100, BEAM_H_MIN)
+            bb_cm  = float(tr.get('secao_b_cm') or 25)
+            bh_cm  = float(tr.get('secao_h_cm') or 40)
+            span   = float(tr.get('span_m') or abs(x2 - x1))
+            mid_x  = (x1 + x2) / 2
+            bt     = Y0 + floor_h
             _dxf_rect(msp, x1, bt - bh_m, x2 - x1, bh_m, 'VIGAS', lw=35)
-            _dxf_dim_linear(msp, x1, x2, bt + 0.30, 0.13, f'L={span:.2f}m', 'COTAS', TH_MD)
+            _dxf_dim_linear(msp, x1, x2, bt + 0.30, 0.13,
+                            f'L={span:.2f}m', 'COTAS', TH_MD)
             _dxf_text(msp, f'T{tr["tramo"]}  {int(bb_cm)}x{int(bh_cm)}',
                       mid_x, bt - bh_m/2, TH_SM, 'TEXTO', 'CENTER', color=7)
         if len(col_x) >= 2:
             x_all = sorted(col_x.values())
             _dxf_dim_linear(msp, x_all[0], x_all[-1], Y0 + floor_h + 0.65, 0.13,
                             f'Total = {x_all[-1]-x_all[0]:.2f} m', 'COTAS', TH_MD)
-        _dxf_text(msp, pid.upper(), total_w/2, Y0 + floor_h + 1.05, TH_LG, 'TEXTO', 'CENTER', color=7)
-        Y0 -= (floor_h + GAP + 1.2)
+        _dxf_text(msp, pid.upper(), total_w / 2, Y0 + floor_h + 1.05, TH_LG,
+                  'TEXTO', 'CENTER', color=7)
+        frame_idx += 1
+        y_cursor -= (floor_h + GAP + 1.5)
 
-    _dxf_title_block(msp, project, "ALCADOS DE PORTICOS", "1:50")
+    # ── Title block below all frames ─────────────────────────────────────────
+    _dxf_title_block(msp, project, "ALCADOS DE PORTICOS", "1:50",
+                     x0=0.0, y0=y_cursor)
     out = io.StringIO()
     doc.write(out)
     return out.getvalue().encode('utf-8')
