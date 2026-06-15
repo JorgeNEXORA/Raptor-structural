@@ -25,8 +25,12 @@ except Exception:
     def catalog_names(): return []
     def select_slab(*a, **k): return None
 import importlib as _importlib
+import core.model as _core_model_mod
+import config.slab_catalog as _slab_cat_mod
 import pipeline.continuous_pipeline as _ccp_mod
 import pipeline.auto_pipeline as _apm_mod
+_importlib.reload(_core_model_mod)
+_importlib.reload(_slab_cat_mod)
 _importlib.reload(_ccp_mod)
 _importlib.reload(_apm_mod)
 from pipeline.auto_pipeline import AutoPipeline
