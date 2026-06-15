@@ -1010,6 +1010,7 @@ with st.sidebar:
 
         st.divider()
         st.markdown("**Peças Desenhadas**")
+        st.caption("v2026.06.15b — recobrimento 3 cm")
         gen_drawings = st.button("🖊  Gerar desenhos", use_container_width=True,
                                  help="Gera planta de fundações, lajes e quadro de pilares")
         if gen_drawings:
