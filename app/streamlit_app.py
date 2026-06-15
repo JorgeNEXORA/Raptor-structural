@@ -1664,6 +1664,7 @@ with tab_porticos:
             # Beam results (only if beams explicitly tagged with this portico_id)
             _pbeams = _beam_by_pid.get(_pid, [])
             if _pbeams:
+                _p_rows = []
                 for _b in _pbeams:
                     _r = _b.result
                     _p_rows.append({
