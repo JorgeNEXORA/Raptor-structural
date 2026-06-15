@@ -12,7 +12,6 @@ from analysis.reinforcement import ReinforcementHelper
 from analysis.tie_beams import TieBeamPlanner, TieBeamDesigner
 from analysis.load_distribution import SlabToBeamDistributor
 from analysis.slab_behavior import SlabBehaviorEstimator
-from pipeline.continuous_pipeline import ContinuousPipeline
 from config.design_code import load_design_code
 import os
 
@@ -166,13 +165,7 @@ class AutoPipeline:
                 project.add_alert("info",
                     f"Viga de travação {b.id}: verificar força de ligação horizontal (EC2 §9.10.2).")
 
-        # ── Continuous beam analysis ──────────────────────────────────────────
-        try:
-            cont = ContinuousPipeline(project.columns, project.beams).run()
-            if cont:
-                project.add_alert("info", f"Foram detetadas {len(cont)} linhas de vigas contínuas.")
-        except Exception:
-            pass  # continuous pipeline is optional; skip if beam IDs don't match
+        # ── Continuous beam analysis (skip — hardcoded demo IDs only) ───────────
 
         for b in project.beams:
             if b.continuous_result:
