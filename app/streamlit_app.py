@@ -56,6 +56,244 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ─── Global dark theme CSS ────────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* ── Base & Background ── */
+body, [data-testid="stApp"], .main, .block-container {
+    background: #0f1419 !important;
+    color: #e8e8e8;
+}
+[data-testid="stSidebar"] {
+    background: #0a0e14 !important;
+    border-right: 1px solid #c9a84c22;
+}
+
+/* ── Typography ── */
+h1, h2, h3, h4, h5, h6,
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+    color: #c9a84c !important;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+}
+p, span, label, div {
+    color: #e8e8e8;
+}
+
+/* ── Tabs ── */
+[data-testid="stTabs"] button {
+    background: transparent !important;
+    color: #888 !important;
+    border-bottom: 2px solid transparent !important;
+    font-size: 0.78rem !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    padding: 10px 16px !important;
+    border-radius: 0 !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #c9a84c !important;
+    border-bottom: 2px solid #c9a84c !important;
+    font-weight: 700 !important;
+}
+[data-testid="stTabs"] button:hover {
+    color: #e8e8e8 !important;
+}
+[data-testid="stTabs"] [role="tablist"] {
+    border-bottom: 1px solid #1e2836;
+}
+
+/* ── Buttons ── */
+.stButton > button {
+    background: transparent !important;
+    border: 1px solid #c9a84c44 !important;
+    color: #c9a84c !important;
+    border-radius: 3px !important;
+    font-size: 0.8rem !important;
+    letter-spacing: 0.05em !important;
+    transition: all 0.2s !important;
+}
+.stButton > button:hover {
+    background: #c9a84c18 !important;
+    border-color: #c9a84c !important;
+}
+.stButton > button[kind="primary"] {
+    background: #c9a84c !important;
+    color: #0f1419 !important;
+    font-weight: 700 !important;
+    border: none !important;
+}
+.stDownloadButton > button {
+    background: transparent !important;
+    border: 1px solid #c9a84c33 !important;
+    color: #c9a84c !important;
+    border-radius: 3px !important;
+    font-size: 0.8rem !important;
+}
+.stDownloadButton > button:hover {
+    background: #c9a84c18 !important;
+    border-color: #c9a84c !important;
+}
+
+/* ── Inputs, selects, number inputs ── */
+input, textarea,
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input,
+[data-testid="stTextArea"] textarea {
+    background: #131920 !important;
+    border: 1px solid #2a3040 !important;
+    color: #e8e8e8 !important;
+    border-radius: 3px !important;
+}
+input:focus, textarea:focus {
+    border-color: #c9a84c55 !important;
+    box-shadow: none !important;
+}
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stMultiSelect"] > div > div {
+    background: #131920 !important;
+    border: 1px solid #2a3040 !important;
+    color: #e8e8e8 !important;
+    border-radius: 3px !important;
+}
+[data-baseweb="select"] > div {
+    background: #131920 !important;
+    border-color: #2a3040 !important;
+}
+[data-baseweb="popover"] ul {
+    background: #131920 !important;
+    border: 1px solid #2a3040 !important;
+}
+[data-baseweb="popover"] li {
+    color: #e8e8e8 !important;
+}
+[data-baseweb="popover"] li:hover {
+    background: #1e2836 !important;
+}
+
+/* ── Metrics ── */
+[data-testid="stMetric"] {
+    background: #131920 !important;
+    border: 1px solid #1e2836 !important;
+    border-radius: 4px !important;
+    padding: 12px !important;
+    border-left: 3px solid #c9a84c !important;
+}
+[data-testid="stMetric"] label {
+    color: #888 !important;
+    font-size: 0.72rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+}
+[data-testid="stMetricValue"] {
+    color: #c9a84c !important;
+    font-size: 1.4rem !important;
+    font-weight: 700 !important;
+}
+
+/* ── DataFrames / Tables ── */
+[data-testid="stDataFrame"] thead th,
+.stDataFrame thead th {
+    background: #131920 !important;
+    color: #c9a84c !important;
+    font-size: 0.72rem !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid #1e2836 !important;
+}
+[data-testid="stDataFrame"] tbody tr:nth-child(odd) td {
+    background: #0f1419 !important;
+}
+[data-testid="stDataFrame"] tbody tr:nth-child(even) td {
+    background: #111820 !important;
+}
+[data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
+    border-color: #1e2836 !important;
+    color: #e8e8e8 !important;
+}
+
+/* ── Expanders ── */
+[data-testid="stExpander"] {
+    border: 1px solid #1e2836 !important;
+    border-radius: 4px !important;
+    background: #0c1018 !important;
+}
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary p {
+    color: #c9a84c !important;
+    font-size: 0.8rem !important;
+    letter-spacing: 0.06em !important;
+}
+
+/* ── Dividers ── */
+hr { border-color: #c9a84c33 !important; }
+
+/* ── Alerts ── */
+[data-testid="stAlert"][data-baseweb="notification"][kind="positive"],
+.stSuccess {
+    background: #0d1f14 !important;
+    border-left: 3px solid #2d7a3a !important;
+    color: #5cb87a !important;
+}
+[data-testid="stAlert"][data-baseweb="notification"][kind="negative"],
+.stError {
+    background: #1f0d0d !important;
+    border-left: 3px solid #7a2d2d !important;
+    color: #e05555 !important;
+}
+[data-testid="stAlert"][data-baseweb="notification"][kind="warning"],
+.stWarning {
+    background: #1f1a0d !important;
+    border-left: 3px solid #7a6020 !important;
+    color: #c9a84c !important;
+}
+[data-testid="stAlert"][data-baseweb="notification"][kind="info"],
+.stInfo {
+    background: #0d1525 !important;
+    border-left: 3px solid #2a4a7a !important;
+    color: #6a9fd8 !important;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1e2836; }
+::-webkit-scrollbar-thumb { background: #c9a84c44; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #c9a84c88; }
+
+/* ── File uploader ── */
+[data-testid="stFileUploader"] {
+    border: 1px dashed #c9a84c33 !important;
+    border-radius: 4px !important;
+    background: #0c1018 !important;
+}
+
+/* ── Progress bars ── */
+[data-testid="stProgressBar"] > div { background: #c9a84c !important; }
+
+/* ── Radio buttons ── */
+[data-testid="stRadio"] label { color: #888 !important; }
+[data-testid="stRadio"] label[data-checked="true"] { color: #c9a84c !important; }
+
+/* ── Sidebar specifics ── */
+[data-testid="stSidebar"] .stCaption { color: #666 !important; font-size: 0.7rem !important; }
+[data-testid="stSidebar"] small { color: #666 !important; }
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] textarea {
+    background: #0c1018 !important;
+    border-color: #1e2836 !important;
+}
+
+/* ── Form containers ── */
+[data-testid="stForm"] {
+    border: 1px solid #1e2836 !important;
+    border-radius: 4px !important;
+    background: #0c1018 !important;
+}
+
+/* ── Captions ── */
+.stCaption, [data-testid="stCaptionContainer"] { color: #666 !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # ─── Session state init ───────────────────────────────────────────────────────
 for _key, _val in [
     ("project", None),
@@ -86,48 +324,86 @@ _LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.jpeg
 if st.session_state.project_info is None:
     st.markdown("""
     <style>
-    [data-testid="stSidebar"] {display: none}
-    .welcome-container {
-        max-width: 560px;
-        margin: 0 auto;
-        padding: 2rem 0;
+    [data-testid="stSidebar"] {display: none !important;}
+    [data-testid="stApp"], .main, .block-container {
+        background: #0f1419 !important;
+    }
+    .block-container {
+        padding-top: 3rem !important;
+    }
+    .welcome-logo-wrap {
+        text-align: center;
+        margin-bottom: 0.5rem;
     }
     .welcome-title {
-        font-size: 2.2rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
+        font-size: 2.8rem;
+        font-weight: 800;
+        letter-spacing: 0.20em;
         color: #c9a84c;
-        margin: 0;
+        margin: 0 0 0.1rem 0;
+        text-align: center;
+        line-height: 1.1;
     }
     .welcome-sub {
-        color: #888;
-        font-size: 0.95rem;
-        margin-top: 0.25rem;
-        letter-spacing: 0.05em;
+        color: #555;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        text-align: center;
+        margin-bottom: 1.6rem;
+    }
+    .welcome-divider {
+        border: none;
+        border-top: 1px solid #c9a84c22;
+        margin: 0.8rem 0 1.2rem 0;
+    }
+    .welcome-form-wrap {
+        border: 1px solid #1e2836;
+        background: #0c1018;
+        border-radius: 6px;
+        padding: 1.4rem 1.6rem 1rem 1.6rem;
+        margin-bottom: 1rem;
+    }
+    .welcome-form-title {
+        color: #c9a84c !important;
+        font-size: 0.72rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.12em !important;
+        margin-bottom: 0.9rem !important;
+    }
+    .welcome-or {
+        text-align: center;
+        color: #444;
+        font-size: 0.72rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin: 0.8rem 0 0.4rem 0;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    _wc1, _wc2, _wc3 = st.columns([1, 2.2, 1])
+    _wc1, _wc2, _wc3 = st.columns([1, 2.0, 1])
     with _wc2:
         if os.path.exists(_LOGO_PATH):
-            st.image(_LOGO_PATH, width=140)
+            st.markdown('<div class="welcome-logo-wrap">', unsafe_allow_html=True)
+            st.image(_LOGO_PATH, width=120)
+            st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('<p class="welcome-title">RAPTOR</p>', unsafe_allow_html=True)
-        st.markdown('<p class="welcome-sub">CÁLCULO DE ESTRUTURAS EM BETÃO ARMADO</p>', unsafe_allow_html=True)
-        st.divider()
+        st.markdown('<p class="welcome-sub">Cálculo de Estruturas em Betão Armado</p>', unsafe_allow_html=True)
+        st.markdown('<hr class="welcome-divider">', unsafe_allow_html=True)
 
-        with st.form("form_dados_trabalho", border=True):
-            st.markdown("#### Dados do Trabalho")
+        st.markdown('<p class="welcome-form-title">Dados do Trabalho</p>', unsafe_allow_html=True)
+        with st.form("form_dados_trabalho", border=False):
             _wf1, _wf2 = st.columns(2)
             _req  = _wf1.text_input("Requerente")
             _obra = _wf2.text_input("Local da Obra")
             _freg = _wf1.text_input("Freguesia")
             _conc = _wf2.text_input("Concelho")
 
-            st.markdown("---")
+            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
             _wb1, _wb2 = st.columns(2)
-            _novo = _wb1.form_submit_button("📄  Novo Projeto", use_container_width=True, type="primary")
-            _abrir_lbl = _wb2.form_submit_button("📂  Abrir Projeto…", use_container_width=True)
+            _novo = _wb1.form_submit_button("Novo Projeto", use_container_width=True, type="primary")
+            _abrir_lbl = _wb2.form_submit_button("Abrir Projeto…", use_container_width=True)
 
             if _novo or _abrir_lbl:
                 st.session_state.project_info = {
@@ -139,7 +415,7 @@ if st.session_state.project_info is None:
                 st.rerun()
 
         # Abrir ficheiro .raptor directamente
-        st.markdown("##### ou abrir ficheiro existente")
+        st.markdown('<p class="welcome-or">ou abrir ficheiro existente</p>', unsafe_allow_html=True)
         _wup = st.file_uploader("", type=["raptor", "json"], label_visibility="collapsed")
         if _wup is not None:
             try:
@@ -363,22 +639,39 @@ def _draw_portico(pid: str, tramos: list, project_columns: list):
     return fig
 
 
+# ─── Top header bar ───────────────────────────────────────────────────────────
+st.markdown("""
+<div style="
+    background: #0a0e14;
+    border-bottom: 1px solid #c9a84c33;
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin: -1rem -1rem 1rem -1rem;
+">
+    <span style="color:#c9a84c;font-size:1.1rem;font-weight:800;letter-spacing:.15em">RAPTOR</span>
+    <span style="color:#333;font-size:1rem">|</span>
+    <span style="color:#666;font-size:0.8rem;letter-spacing:.05em">CÁLCULO DE ESTRUTURAS EM BETÃO ARMADO</span>
+</div>
+""", unsafe_allow_html=True)
+
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     # Header com logo + nome do projeto
     _pi = st.session_state.get("project_info") or {}
     _sb_h1, _sb_h2 = st.columns([1, 3])
     if os.path.exists(_LOGO_PATH):
-        _sb_h1.image(_LOGO_PATH, width=56)
+        _sb_h1.image(_LOGO_PATH, width=52)
     _sb_h2.markdown(
-        f"<span style='color:#c9a84c;font-weight:700;font-size:1.1rem;letter-spacing:.08em'>RAPTOR</span><br>"
-        f"<span style='color:#888;font-size:0.72rem'>{_pi.get('requerente','') or 'Novo projeto'}</span><br>"
-        f"<span style='color:#666;font-size:0.68rem'>{_pi.get('local_obra','')}</span>",
+        f"<span style='color:#c9a84c;font-weight:700;font-size:0.95rem;letter-spacing:.08em'>RAPTOR</span><br>"
+        f"<span style='color:#c9a84c99;font-size:0.78rem;font-weight:600'>{_pi.get('requerente','') or 'Novo projeto'}</span><br>"
+        f"<span style='color:#666;font-size:0.7rem'>{_pi.get('local_obra','')}</span>",
         unsafe_allow_html=True,
     )
 
     # Botão para voltar ao ecrã de projetos
-    if st.button("✏️ Dados do Trabalho", use_container_width=True):
+    if st.button("Dados do Trabalho", use_container_width=True):
         st.session_state.project_info = None
         st.rerun()
     st.divider()
@@ -425,7 +718,7 @@ with st.sidebar:
             help="Guarda geometria, resultados e armaduras calculadas.",
         )
 
-    with st.expander("📂 Abrir projeto / inputs guardado"):
+    with st.expander("Abrir projeto / inputs guardado"):
         st.caption("Carrega um ficheiro .raptor (inputs ou projeto completo).")
         raptor_upload = st.file_uploader("Ficheiro .raptor", type=["raptor", "json"],
                                          key="raptor_upload", label_visibility="collapsed")
@@ -513,10 +806,10 @@ with st.sidebar:
     fyk_mpa = _fyk_options[fyk_label]
 
     st.divider()
-    st.markdown("**Elementos avançados**")
+    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:4px 0 2px 0;text-transform:uppercase'>Elementos Avançados</p>", unsafe_allow_html=True)
 
     # ── Shear walls ──────────────────────────────────────────────────────────
-    with st.expander(f"🧱 Paredes estruturais ({len(st.session_state.manual_walls)})"):
+    with st.expander(f"Paredes estruturais ({len(st.session_state.manual_walls)})"):
         _pw = st.session_state.get("_prefill_wall", {})
         with st.form("form_wall", clear_on_submit=True):
             wc1, wc2 = st.columns(2)
@@ -548,7 +841,7 @@ with st.sidebar:
                     st.rerun()
 
     # ── Flat slabs ───────────────────────────────────────────────────────────
-    with st.expander(f"⚪ Lajes fungiformes ({len(st.session_state.manual_flat_slabs)})"):
+    with st.expander(f"Lajes fungiformes ({len(st.session_state.manual_flat_slabs)})"):
         _pfs = st.session_state.get("_prefill_fs", {})
         _fs_panel_opts = ["interior", "edge", "corner"]
         with st.form("form_fs", clear_on_submit=True):
@@ -584,7 +877,7 @@ with st.sidebar:
                     st.rerun()
 
     # ── Stairs ───────────────────────────────────────────────────────────────
-    with st.expander(f"🪜 Escadas ({len(st.session_state.manual_stairs)})"):
+    with st.expander(f"Escadas ({len(st.session_state.manual_stairs)})"):
         _pst = st.session_state.get("_prefill_stair", {})
         with st.form("form_stair", clear_on_submit=True):
             sc1, sc2 = st.columns(2)
@@ -617,7 +910,7 @@ with st.sidebar:
                     st.rerun()
 
     # ── Muros de betão de suporte ────────────────────────────────────────────
-    with st.expander(f"🧱 Muros de betão ({len(st.session_state.manual_retaining_walls)})"):
+    with st.expander(f"Muros de betão ({len(st.session_state.manual_retaining_walls)})"):
         _prw = st.session_state.get("_prefill_rw", {})
         _rw_tipo_opts = ["Suporte de terras", "Piscina"]
         _rw_lado_opts = ["Direito", "Esquerdo"]
@@ -694,9 +987,10 @@ with st.sidebar:
             st.session_state.wall_slab_map = _wsmap
 
     # ── Pilares ──────────────────────────────────────────────────────────────
+    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:8px 0 2px 0;text-transform:uppercase'>Geometria</p>", unsafe_allow_html=True)
     _cc_cur = st.session_state.get("col_config") or {}
     _n_def  = _cc_cur.get("n", 0)
-    with st.expander(f"🏛️ Pilares ({_n_def} pilares)"):
+    with st.expander(f"Pilares ({_n_def} pilares)"):
         st.caption("Define o número de pilares, pisos e alturas.")
         _pc1, _pc2 = st.columns(2)
         _n_pil = int(_pc1.number_input("Nº de pilares", value=_n_def, min_value=0, max_value=60, step=1, key="cc_n"))
@@ -740,7 +1034,7 @@ with st.sidebar:
                 st.rerun()
 
     # ── Sapatas ───────────────────────────────────────────────────────────────
-    with st.expander("⬛ Sapatas — tipo por pilar"):
+    with st.expander("Sapatas — tipo por pilar"):
         st.caption("Aqui podes ver e ajustar quais os pilares com sapata isolada vs sapata corrida do muro da cave. "
                    "Define primeiro os Pilares acima.")
         _cc2 = st.session_state.get("col_config")
@@ -778,7 +1072,7 @@ with st.sidebar:
     _sl_lvl_opts  = ["piso", "cobertura"]
     _sl_dir_opts  = ["X", "Y"]
     _sl_zona_opts = list(_zona_map_sb.keys())
-    with st.expander(f"⬜ Lajes ({len(st.session_state.manual_slabs)})"):
+    with st.expander(f"Lajes ({len(st.session_state.manual_slabs)})"):
         _pslab = st.session_state.get("_prefill_slab", {})
         _sl_type_idx  = _sl_type_opts.index(_pslab["slab_type_lbl"]) if _pslab.get("slab_type_lbl") in _sl_type_opts else 1
         _sl_lvl_idx   = _sl_lvl_opts.index(_pslab["level"]) if _pslab.get("level") in _sl_lvl_opts else 0
@@ -873,7 +1167,8 @@ with st.sidebar:
         _pt_by_pid.setdefault(_pt["portico_id"], []).append(_pt)
     _n_pt_porticos = len(_pt_by_pid)
 
-    with st.expander(f"🏗️ Pórticos ({_n_pt_porticos} pórtico(s))"):
+    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:8px 0 2px 0;text-transform:uppercase'>Pórticos</p>", unsafe_allow_html=True)
+    with st.expander(f"Pórticos ({_n_pt_porticos} pórtico(s))"):
         # ── Pórticos existentes ──
         for _ppid, _tramos in _pt_by_pid.items():
             _pa, _pb = st.columns([6, 1])
@@ -998,8 +1293,8 @@ with st.sidebar:
 
     # ── Configuração de Cargas ───────────────────────────────────────────────
     st.divider()
-    st.markdown("**Configuração de cargas**")
-    with st.expander("🏠 Laje de piso"):
+    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:8px 0 2px 0;text-transform:uppercase'>Cargas</p>", unsafe_allow_html=True)
+    with st.expander("Laje de piso"):
         _laje_opts  = {v[1]: k for k, v in LAJE.items()}
         _iso_opts   = {v[1]: k for k, v in ISOLAMENTO.items()}
         _acab_opts  = {v[1]: k for k, v in ACABAMENTO_PISO.items()}
@@ -1022,7 +1317,7 @@ with st.sidebar:
             for _l in _bdown_p:
                 st.caption(_l)
 
-    with st.expander("🏗️ Laje de cobertura"):
+    with st.expander("Laje de cobertura"):
         _imp_opts   = {v[1]: k for k, v in IMPERMEABILIZACAO.items()}
         _pend_opts  = {v[1]: k for k, v in BETONILHA_PENDENTE.items()}
         _acob_opts  = {v[1]: k for k, v in ACABAMENTO_COB.items()}
@@ -1048,7 +1343,7 @@ with st.sidebar:
             for _l in _bdown_c:
                 st.caption(_l)
 
-    with st.expander("🚗 Zonas especiais"):
+    with st.expander("Zonas especiais"):
         _col1, _col2 = st.columns(2)
         with _col1:
             st.caption("**Varanda**")
@@ -1070,8 +1365,8 @@ with st.sidebar:
 
     # ── Pre-dimensionamento de pilares ───────────────────────────────────────
     st.divider()
-    st.markdown("**Pré-dimensionamento de pilares**")
-    with st.expander("⚙️ Calcular secções automaticamente"):
+    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:4px 0 2px 0;text-transform:uppercase'>Pré-dimensionamento</p>", unsafe_allow_html=True)
+    with st.expander("Calcular secções automaticamente"):
         st.caption("O programa calcula as dimensões mínimas para cada pilar com base nas cargas e na área tributária.")
         pd_gk      = st.number_input("gk por piso (kN/m²)", value=5.0, min_value=1.0, step=0.5)
         pd_qk      = st.number_input("qk por piso (kN/m²)", value=2.0, min_value=0.5, step=0.5)
