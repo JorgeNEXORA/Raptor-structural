@@ -1291,7 +1291,7 @@ if run_btn:
                         for _i3 in range(_n3)
                     ]
                 else:
-                    columns = build_demo_columns()
+                    columns = []
                 beams = CSVBeamImporter().load_beams(beam_path, columns) if beam_path else []
                 slabs = CSVSlabImporter().load_slabs(slab_path) if slab_path else []
 
@@ -1467,11 +1467,11 @@ if predim_btn:
                 if dxf_path_tmp:
                     pd_cols = SimpleDXFImporter().import_columns(dxf_path_tmp)
                 else:
-                    pd_cols = build_demo_columns()
+                    pd_cols = []
             else:
                 col_path_tmp = save_upload(col_csv)
                 pd_cols = (CSVGeometryImporter().load_columns(col_path_tmp)
-                           if col_path_tmp else build_demo_columns())
+                           if col_path_tmp else [])
 
             predimer = ColumnPreDimensioner(fck_mpa=fck_mpa, fyk_mpa=fyk_mpa)
             pd_results = predimer.run(
