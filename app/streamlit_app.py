@@ -1044,10 +1044,13 @@ with st.sidebar:
                         st.session_state["dxf_porm_pilares"]  = draw_column_section_dxf(_p)
                         st.session_state["dxf_porm_equilib"]  = draw_tie_beam_detail_dxf(_p)
                         st.session_state["dxf_porm_muros"]    = draw_wall_detail_dxf(_p)
-                        _pt_tramos = st.session_state.get("portico_tramos", [])
-                        if _pt_tramos:
-                            st.session_state["dxf_porticos"] = draw_portico_elevations_dxf(_p, _pt_tramos)
                         st.session_state["drawings_ready"] = True
+                # Pórticos DXF: always regenerate (never cached — data depends on tramos)
+                _pt_tramos = st.session_state.get("portico_tramos", [])
+                if _pt_tramos and st.session_state.get("project"):
+                    with st.spinner("A gerar alçados DXF…"):
+                        st.session_state["dxf_porticos"] = draw_portico_elevations_dxf(
+                            st.session_state.project, _pt_tramos)
                 if st.session_state.get("dxf_porticos"):
                     st.download_button("⬇  Alçados de Pórticos (DXF)",
                         data=st.session_state["dxf_porticos"],
