@@ -167,9 +167,12 @@ class AutoPipeline:
                     f"Viga de travação {b.id}: verificar força de ligação horizontal (EC2 §9.10.2).")
 
         # ── Continuous beam analysis ──────────────────────────────────────────
-        cont = ContinuousPipeline(project.columns, project.beams).run()
-        if cont:
-            project.add_alert("info", f"Foram detetadas {len(cont)} linhas de vigas contínuas.")
+        try:
+            cont = ContinuousPipeline(project.columns, project.beams).run()
+            if cont:
+                project.add_alert("info", f"Foram detetadas {len(cont)} linhas de vigas contínuas.")
+        except Exception:
+            pass  # continuous pipeline is optional; skip if beam IDs don't match
 
         for b in project.beams:
             if b.continuous_result:
