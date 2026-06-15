@@ -1336,7 +1336,7 @@ def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off, label
                      dxfattribs={'layer': 'ARMADURA_INF', 'lineweight': 50, 'color': 1})
 
         c_bot   = int(span * 100 - col_w_l/2 - col_w_r/2 + 15)
-        bot_txt = rr.get('bottom_text') or f'{n_bot}Ø{dia_bot}'
+        bot_txt = rr.get('bottom_text') or f'{n_bot}%%c{dia_bot}'
         _dxf_text(msp, f'{bot_txt}  C={c_bot}', mid, y_b + TH_SM*0.6, TH_MD, 'TEXTO',
                   'CENTER', color=1)
 
@@ -1346,17 +1346,17 @@ def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off, label
                      dxfattribs={'layer': 'ARMADURA_SUP', 'lineweight': 25,
                                  'linetype': 'DASHED', 'color': 2})
         c_hang = c_bot
-        _dxf_text(msp, f'2Ø12  C={c_hang} (m.)', mid, y_h + TH_XS*0.5,
+        _dxf_text(msp, f'2%%c12  C={c_hang}', mid, y_h + TH_XS*0.5,
                   TH_SM, 'TEXTO', 'CENTER', color=2)
 
         # Stirrup labels (below beam)
         y_sl = beam_bot - TH_SM * 0.6
-        _dxf_text(msp, f'{n_el}xØ{phi_e} a/{s_e}',
+        _dxf_text(msp, f'{n_el}x%%c{phi_e} a/{s_e}',
                   x_l + zone*0.5, y_sl, TH_SM, 'TEXTO', 'CENTER')
         if n_mi > 0:
-            _dxf_text(msp, f'{n_mi}xØ{phi_m} a/{s_m}',
+            _dxf_text(msp, f'{n_mi}x%%c{phi_m} a/{s_m}',
                       mid, y_sl, TH_SM, 'TEXTO', 'CENTER')
-        _dxf_text(msp, f'{n_er}xØ{phi_e} a/{s_e}',
+        _dxf_text(msp, f'{n_er}x%%c{phi_e} a/{s_e}',
                   x_r - zone*0.5, y_sl, TH_SM, 'TEXTO', 'CENTER')
 
         # Msd / Vsd inside beam
@@ -1393,7 +1393,7 @@ def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off, label
             msp.add_circle((bxh, cy_b + cs_h_d - cov_s - bar_r*0.8),
                            bar_r*0.75, dxfattribs={'layer': 'ARMADURA_SUP', 'color': 2})
         # label
-        _dxf_text(msp, f'{int(bw*100)}x{int(bh*100)} cm  [{n_bot}Ø{dia_bot}]',
+        _dxf_text(msp, f'{int(bw*100)}x{int(bh*100)} cm  [{n_bot}%%c{dia_bot}]',
                   cx, cs_y_bot + cs_h_d + TH_SM*0.6, TH_SM, 'TEXTO', 'CENTER')
 
     # ── COLUMN STUBS ──────────────────────────────────────────────────────────
@@ -1426,7 +1426,7 @@ def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off, label
         msp.add_line((x_ext_l, y_ts), (x_ext_r, y_ts),
                      dxfattribs={'layer': 'ARMADURA_SUP', 'lineweight': 35, 'color': 2})
         c_sup = int((x_ext_r - x_ext_l) * 100)
-        _dxf_text(msp, f'2Ø12  C={c_sup}',
+        _dxf_text(msp, f'2%%c12  C={c_sup}',
                   pos, y_ts - TH_SM*0.6, TH_SM, 'TEXTO', 'CENTER', color=2)
 
     # ── Frame title ────────────────────────────────────────────────────────────
@@ -1797,11 +1797,11 @@ def draw_column_schedule_dxf(project: 'Project') -> bytes:
                     msp.add_circle((bx, by), bar_r, dxfattribs={'layer': 'ARMADURA_INF', 'color': 1})
 
             # Text below section
-            dim_lbl = f'Ø{int(col.width_cm)}' if col.shape=='circular' else f'{int(col.width_cm)}x{int(col.depth_cm)}'
+            dim_lbl = f'%%c{int(col.width_cm)}' if col.shape=='circular' else f'{int(col.width_cm)}x{int(col.depth_cm)}'
             y_txt = cy - d/2 - TH_SM*0.6
             _dxf_text(msp, dim_lbl, cx, y_txt, TH_MD, 'TEXTO', 'CENTER', color=8)
-            _dxf_text(msp, f'{n_bars}Ø{bar_dia}', cx, y_txt - TH_SM*1.3, TH_SM, 'TEXTO', 'CENTER', color=1)
-            _dxf_text(msp, 'Ø8 a/20', cx, y_txt - TH_SM*2.5, TH_SM, 'TEXTO', 'CENTER', color=3)
+            _dxf_text(msp, f'{n_bars}%%c{bar_dia}', cx, y_txt - TH_SM*1.3, TH_SM, 'TEXTO', 'CENTER', color=1)
+            _dxf_text(msp, '%%c8 a/20', cx, y_txt - TH_SM*2.5, TH_SM, 'TEXTO', 'CENTER', color=3)
 
             # Column ID (only on first row)
             if j == 0:
@@ -2521,7 +2521,7 @@ def draw_column_section_dxf(project: 'Project') -> bytes:
 
         # Labels
         _det_txt(msp, f"As adot. = {as_adot:.1f} cm²", px, py - 12, 4, 'ARMADURA')
-        _det_txt(msp, "Estribos: Ø8@20cm", px, py - 19, 4, 'ARMADURA')
+        _det_txt(msp, "Estribos: %%c8@20cm", px, py - 19, 4, 'ARMADURA')
         _det_txt(msp, f"Pilares: {ids_str}", px, py + hd + 5, 4)
         _det_txt(msp, f"SECÇÃO {sect_lbl} cm — Esc. 1:25", px, py + hd + 12, 5.5)
 
@@ -2571,7 +2571,7 @@ def draw_tie_beam_detail_dxf(project: 'Project') -> bytes:
         as_req = getattr(tb, 'required_as_cm2', 0.0)
         bars = _pick_bars(as_req / (bh / 100.0) if bh > 0 else as_req * 10)
         _det_txt(msp, f"As req. = {as_req:.2f} cm²  ({bars})", px, py - 10, 4, 'ARMADURA')
-        _det_txt(msp, "Estribos: Ø8@20cm (2 ramos)", px, py - 17, 4, 'ARMADURA')
+        _det_txt(msp, "Estribos: %%c8@20cm (2 ramos)", px, py - 17, 4, 'ARMADURA')
         _det_txt(msp, f"{tb.id}  L={tb.span_m:.2f}m  T={tb.tie_force_kn:.1f}kN", px, py + bh + 5, 4)
         _det_txt(msp, f"SECÇÃO {bw:.0f}x{bh:.0f} cm — Esc. 1:25", px, py + bh + 12, 5.5)
         X0 += bw + GAP
