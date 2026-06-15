@@ -75,11 +75,21 @@ class SlabAnalyzer:
     def _analyze_ribbed(self, slab: SlabPanel) -> SlabResult:
         """
         Laje aligeirada com vigotas pré-esforçadas.
-        MRd e VRd vêm do catálogo do fabricante (Presdouro).
-        Deflexão calculada com EI do catálogo.
+        MRd e VRd vêm do catálogo do fabricante (Pavineiva/Presdouro).
+        Quando rev_kn_m2/div_kn_m2 estão definidos, PP vem do catálogo
+        (igual ao Pavineiva: gk = PP_cat + Rev + Div).
         """
-        gk = slab.gk_kn_m2
         qk = slab.qk_kn_m2
+        # Determine gk: se Rev ou Div definidos → PP do catálogo (modo Pavineiva)
+        entry_pre = CATALOG.get(slab.catalog_id) if slab.catalog_id else None
+        if (slab.rev_kn_m2 > 0 or slab.div_kn_m2 > 0) and entry_pre and entry_pre.pesom2 > 0:
+            gk = entry_pre.pesom2 + slab.rev_kn_m2 + slab.div_kn_m2
+        else:
+            gk = slab.gk_kn_m2
+        # ψ1 (SLS quasi-permanente) — per-slab override para coincidir com Pavineiva
+        psi1_slab = getattr(slab, "psi1", None)
+        if psi1_slab is not None:
+            self.comb.psi2 = float(psi1_slab)
         sd_uls = self.comb.uls_fundamental(gk, qk)
         sd_rare = self.comb.sls_rare(gk, qk)
         sd_freq = self.comb.sls_frequent(gk, qk)

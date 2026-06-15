@@ -707,8 +707,16 @@ with st.sidebar:
             _sl_type_sb = _sb2.selectbox("Tipo", _sl_type_opts, index=_sl_type_idx)
             _sl_lvl_sb  = _sb2.selectbox("Nível", _sl_lvl_opts, index=_sl_lvl_idx)
             _sl_dir_sb  = _sb2.selectbox("Direção", _sl_dir_opts, index=_sl_dir_idx)
-            _sl_zona_sb = _sb2.selectbox("Zona", _sl_zona_opts)
-            _sl_cat_sb  = st.selectbox("Catálogo", _cat_sb_opts, index=_sl_cat_idx)
+            _sl_zona_sb = _sb2.selectbox("Zona (Qk)", _sl_zona_opts)
+            _sl_cat_sb  = st.selectbox("Catálogo Pavineiva", _cat_sb_opts, index=_sl_cat_idx)
+            # Cargas separadas ao estilo Pavineiva
+            _sc1, _sc2, _sc3 = st.columns(3)
+            _sl_rev_sb = _sc1.number_input("Rev. (kN/m²)", value=float(_pslab.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1,
+                                            help="Revestimentos — separado do PP do catálogo")
+            _sl_div_sb = _sc2.number_input("Div. (kN/m²)", value=float(_pslab.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1,
+                                            help="Divisórias")
+            _sl_psi1_sb = _sc3.number_input("ψ₁ (SLS)", value=float(_pslab.get("psi1", 0.3)), min_value=0.0, max_value=1.0, step=0.1,
+                                             help="Coef. SLS quasi-permanente (0.30 habitável, 0.50 escritórios, 0.70 armazém)")
             _slab_lbl = "✅ Atualizar laje" if _pslab else "➕ Adicionar laje"
             if st.form_submit_button(_slab_lbl):
                 _type_map_sb = {"Aligeirada": "ribbed", "Maciça 1D": "one_way",
@@ -723,10 +731,15 @@ with st.sidebar:
                     gk_kn_m2=_gk_sb,
                     qk_kn_m2=_qk_sb,
                     direction=_sl_dir_sb.lower(),
+                    rev_kn_m2=float(_sl_rev_sb),
+                    div_kn_m2=float(_sl_div_sb),
                 )
                 _ns.level = _sl_lvl_sb
                 _ns.catalog_id = None if _sl_cat_sb == "(automático)" else _sl_cat_sb
                 _ns.support_beam_ids = []
+                # Update psi1 for SLS if user changed it
+                if hasattr(_ns, 'psi1'):
+                    _ns.psi1 = float(_sl_psi1_sb)
                 st.session_state.manual_slabs.append(_ns)
                 st.session_state.pop("_prefill_slab", None)
                 st.rerun()
@@ -747,6 +760,9 @@ with st.sidebar:
                         "direction": getattr(_ms, "direction", "x") or "x",
                         "gk_kn_m2": _ms.gk_kn_m2, "qk_kn_m2": _ms.qk_kn_m2,
                         "catalog_id": getattr(_ms, "catalog_id", None),
+                        "rev_kn_m2": getattr(_ms, "rev_kn_m2", 1.0),
+                        "div_kn_m2": getattr(_ms, "div_kn_m2", 1.5),
+                        "psi1": getattr(_ms, "psi1", 0.3),
                     }
                     st.session_state.manual_slabs.pop(_i)
                     st.rerun()

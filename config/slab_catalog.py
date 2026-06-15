@@ -1,14 +1,15 @@
 """
 config/slab_catalog.py
 ──────────────────────
-Catálogo de lajes aligeiradas Presdouro.
-Lê o XML do fabricante e expõe:
+Catálogo de lajes aligeiradas: Pavineiva (JSON), Presdouro (XML), PAVINORTE (hardcoded).
+Expõe:
   - CATALOG: dict  nome → SlabCatalogEntry
   - select_slab(): escolhe a laje mínima adequada para MEd e VEd dados
-  - load_catalog(): lê o XML de um caminho arbitrário
+  - load_catalog(): lê o XML Presdouro de um caminho arbitrário
 """
 
 import xml.etree.ElementTree as ET
+import json
 import os
 from dataclasses import dataclass
 from typing import Optional, List
@@ -88,10 +89,49 @@ _PAVINORTE: dict = {e.nome: e for e in [
 ]}
 
 
+# ── Pavineiva catalog (from BDPavineiva.mdb exported to JSON) ─────────────────
+def _load_pavineiva_json(json_path: str) -> dict:
+    catalog = {}
+    try:
+        with open(json_path, encoding="utf-8-sig") as f:
+            data = json.load(f)
+        for item in data:
+            nome = (item.get("nome") or "").strip()
+            if not nome:
+                continue
+            def pf(k):
+                v = item.get(k)
+                try:
+                    return float(str(v).replace(",", ".")) if v is not None else 0.0
+                except (TypeError, ValueError):
+                    return 0.0
+            catalog[nome] = SlabCatalogEntry(
+                nome=nome,
+                altura_cm=pf("altura_cm"),
+                alturaab_cm=pf("alturaab_cm"),
+                pesom2=pf("pesom2"),
+                mrd_knm_m=pf("mrd_knm_m"),
+                vrd_kn_m=pf("vrd_kn_m"),
+                ei_kn_m2_m=pf("ei_kn_m2_m"),
+                vigota=(item.get("vigota") or "").strip(),
+                bloco=(item.get("bloco") or "").strip(),
+            )
+    except Exception:
+        pass
+    return catalog
+
+
+def _pavineiva_json_path() -> str:
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, "pavineiva_catalog.json")
+
+
 # ── Module-level catalog (loaded once on import) ─────────────────────────────
 _XML_PATH = _default_xml_path()
 _presdouro: dict = load_catalog(_XML_PATH) if os.path.exists(_XML_PATH) else {}
-CATALOG: dict = {**_PAVINORTE, **_presdouro}  # PAVINORTE first, Presdouro appended
+_pavineiva: dict = _load_pavineiva_json(_pavineiva_json_path())
+# Pavineiva first (most complete), then Presdouro, then PAVINORTE as fallback
+CATALOG: dict = {**_PAVINORTE, **_presdouro, **_pavineiva}
 
 
 # ── Selector ──────────────────────────────────────────────────────────────────

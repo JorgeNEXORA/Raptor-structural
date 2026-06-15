@@ -132,8 +132,10 @@ class SlabPanel:
     direction: Optional[str] = None
     polygon_points: List[tuple] = field(default_factory=list)
     area_m2: Optional[float] = None
-    catalog_id: Optional[str] = None   # Presdouro catalog reference, e.g. "P3-BL40x20-25"
+    catalog_id: Optional[str] = None   # Pavineiva/Presdouro catalog reference
     level: str = "piso"                # "piso" or "cobertura"
+    rev_kn_m2: float = 0.0             # Revestimentos (kN/m²) — separado para coincidir com Pavineiva
+    div_kn_m2: float = 0.0             # Divisórias    (kN/m²) — idem
     result: Optional[SlabResult] = None
 
 @dataclass
