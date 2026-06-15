@@ -917,7 +917,7 @@ def _draw_frame_elevation(ax, direction, beams, col_map, frame_num, label=None):
     # ── geometry ─────────────────────────────────────────────────────
     bh = beams[0].height_cm / 100    # beam height (m)
     bw = beams[0].width_cm / 100     # beam width (m)
-    cover = 0.025                     # rebar cover (m)
+    cover = 0.030                     # rebar cover (m)
     col_h = col_obj[sorted_col_ids[0]].height_m   # floor height (~3m)
     col_stub_top = col_h * 0.50
     col_stub_bot = col_h * 0.40
@@ -1260,7 +1260,7 @@ def _dxf_frame_elevation(msp, direction, beams, col_map, frame_num, y_off, label
     # ── geometry (model-space metres) ─────────────────────────────────────────
     bh       = beams[0].height_cm / 100
     bw       = beams[0].width_cm  / 100
-    cover    = 0.025
+    cover    = 0.030
     col_h    = col_obj[sorted_col_ids[0]].height_m
     cst      = col_h * 0.45       # col stub top
     csb      = col_h * 0.35       # col stub bottom
