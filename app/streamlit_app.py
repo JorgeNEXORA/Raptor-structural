@@ -695,12 +695,11 @@ with st.sidebar:
 
     # ── Pilares ──────────────────────────────────────────────────────────────
     _cc_cur = st.session_state.get("col_config") or {}
-    _n_def  = _cc_cur.get("n", 6)
-    with st.expander(f"🏛️ Pilares P1–P{_n_def} ({_n_def} pilares)"):
-        st.caption("Define o número de pilares, pisos e alturas. "
-                   "Se não fizeres upload de CSV, o programa usa esta configuração.")
+    _n_def  = _cc_cur.get("n", 0)
+    with st.expander(f"🏛️ Pilares ({_n_def} pilares)"):
+        st.caption("Define o número de pilares, pisos e alturas.")
         _pc1, _pc2 = st.columns(2)
-        _n_pil = int(_pc1.number_input("Nº de pilares", value=_n_def, min_value=1, max_value=60, step=1, key="cc_n"))
+        _n_pil = int(_pc1.number_input("Nº de pilares", value=_n_def, min_value=0, max_value=60, step=1, key="cc_n"))
         _n_pis = int(_pc1.number_input("Nº de pisos", value=_cc_cur.get("n_pisos", 2), min_value=1, max_value=15, step=1, key="cc_npisos"))
         _h_cav = float(_pc2.number_input("H sapata→piso 1 (m)", value=float(_cc_cur.get("h_cave", 2.80)), min_value=1.0, step=0.05, key="cc_hcave"))
         _h_pis = float(_pc2.number_input("H entre pisos (m)", value=float(_cc_cur.get("h_piso", 2.80)), min_value=2.0, step=0.05, key="cc_hpiso"))
