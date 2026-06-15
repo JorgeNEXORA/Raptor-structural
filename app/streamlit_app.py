@@ -488,22 +488,14 @@ with st.sidebar:
                     st.success(f"'{_proj_loaded.name}' — {_n_rw} muros, {_n_sl} lajes")
     st.divider()
 
-    mode = st.radio("Modo de entrada", ["CSV", "DXF"], horizontal=True)
-
+    mode = "CSV"
     dxf_upload = col_csv = beam_csv = slab_csv = slab_loads_csv = None
-    if mode == "DXF":
-        dxf_upload = st.file_uploader("Ficheiro DXF", type=["dxf"])
-        slab_loads_csv = st.file_uploader("CSV Cargas Lajes (opcional)", type=["csv"])
-    else:
-        col_csv = st.file_uploader("CSV Pilares", type=["csv"])
-        beam_csv = st.file_uploader("CSV Vigas", type=["csv"])
-        slab_csv = st.file_uploader("CSV Lajes", type=["csv"])
-        slab_loads_csv = st.file_uploader("CSV Cargas Lajes", type=["csv"])
 
-    st.divider()
-    project_name = st.text_input("Nome do projeto", "Projeto Estrutural")
-    location = st.text_input("Local", "Barcelos")
-    owner = st.text_input("Requerente / Dono de Obra", value="", key="owner")
+    # Preenche campos do projeto a partir dos Dados do Trabalho
+    _pi = st.session_state.get("project_info") or {}
+    project_name = "Projeto Estrutural"
+    location = _pi.get("local_obra") or _pi.get("freguesia") or "—"
+    owner = _pi.get("requerente") or ""
     building_type = st.selectbox("Tipo de Edifício",
         ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"],
         key="building_type")
