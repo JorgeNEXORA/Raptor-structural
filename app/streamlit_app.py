@@ -1012,6 +1012,9 @@ with st.sidebar:
         st.markdown("**Peças Desenhadas**")
         gen_drawings = st.button("🖊  Gerar desenhos", use_container_width=True,
                                  help="Gera planta de fundações, lajes e quadro de pilares")
+        if gen_drawings:
+            st.session_state.drawings_ready = False
+            st.session_state.pop("dxf_porticos", None)
         if gen_drawings or st.session_state.get("drawings_ready"):
             try:
                 from analysis.drawings import (draw_beam_schedule_dxf,
