@@ -59,6 +59,7 @@ st.set_page_config(
 # ─── Session state init ───────────────────────────────────────────────────────
 for _key, _val in [
     ("project", None),
+    ("project_info", None),
     ("png_bytes", None),
     ("dxf_bytes", None),
     ("docx_bytes", None),
@@ -77,6 +78,83 @@ for _key, _val in [
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _val
+
+# ─── Logo path ────────────────────────────────────────────────────────────────
+_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.jpeg")
+
+# ─── Welcome screen ───────────────────────────────────────────────────────────
+if st.session_state.project_info is None:
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"] {display: none}
+    .welcome-container {
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 2rem 0;
+    }
+    .welcome-title {
+        font-size: 2.2rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        color: #c9a84c;
+        margin: 0;
+    }
+    .welcome-sub {
+        color: #888;
+        font-size: 0.95rem;
+        margin-top: 0.25rem;
+        letter-spacing: 0.05em;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    _wc1, _wc2, _wc3 = st.columns([1, 2.2, 1])
+    with _wc2:
+        if os.path.exists(_LOGO_PATH):
+            st.image(_LOGO_PATH, width=140)
+        st.markdown('<p class="welcome-title">RAPTOR</p>', unsafe_allow_html=True)
+        st.markdown('<p class="welcome-sub">CÁLCULO DE ESTRUTURAS EM BETÃO ARMADO</p>', unsafe_allow_html=True)
+        st.divider()
+
+        with st.form("form_dados_trabalho", border=True):
+            st.markdown("#### Dados do Trabalho")
+            _wf1, _wf2 = st.columns(2)
+            _req  = _wf1.text_input("Requerente")
+            _obra = _wf2.text_input("Local da Obra")
+            _freg = _wf1.text_input("Freguesia")
+            _conc = _wf2.text_input("Concelho")
+
+            st.markdown("---")
+            _wb1, _wb2 = st.columns(2)
+            _novo = _wb1.form_submit_button("📄  Novo Projeto", use_container_width=True, type="primary")
+            _abrir_lbl = _wb2.form_submit_button("📂  Abrir Projeto…", use_container_width=True)
+
+            if _novo or _abrir_lbl:
+                st.session_state.project_info = {
+                    "requerente": _req.strip(),
+                    "local_obra": _obra.strip(),
+                    "freguesia":  _freg.strip(),
+                    "concelho":   _conc.strip(),
+                }
+                st.rerun()
+
+        # Abrir ficheiro .raptor directamente
+        st.markdown("##### ou abrir ficheiro existente")
+        _wup = st.file_uploader("", type=["raptor", "json"], label_visibility="collapsed")
+        if _wup is not None:
+            try:
+                from core.persistence import load_inputs as _li
+                _loaded = _li(_wup.read())
+                for _k, _v in _loaded.items():
+                    st.session_state[_k] = _v
+                st.session_state.project_info = _loaded.get("project_info") or {
+                    "requerente": "", "local_obra": "", "freguesia": "", "concelho": ""
+                }
+                st.rerun()
+            except Exception:
+                st.error("Não foi possível abrir o ficheiro.")
+
+    st.stop()
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -287,8 +365,22 @@ def _draw_portico(pid: str, tramos: list, project_columns: list):
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🏗️ Raptor")
-    st.caption("Análise estrutural EC2 — MVP")
+    # Header com logo + nome do projeto
+    _pi = st.session_state.get("project_info") or {}
+    _sb_h1, _sb_h2 = st.columns([1, 3])
+    if os.path.exists(_LOGO_PATH):
+        _sb_h1.image(_LOGO_PATH, width=56)
+    _sb_h2.markdown(
+        f"<span style='color:#c9a84c;font-weight:700;font-size:1.1rem;letter-spacing:.08em'>RAPTOR</span><br>"
+        f"<span style='color:#888;font-size:0.72rem'>{_pi.get('requerente','') or 'Novo projeto'}</span><br>"
+        f"<span style='color:#666;font-size:0.68rem'>{_pi.get('local_obra','')}</span>",
+        unsafe_allow_html=True,
+    )
+
+    # Botão para voltar ao ecrã de projetos
+    if st.button("✏️ Dados do Trabalho", use_container_width=True):
+        st.session_state.project_info = None
+        st.rerun()
     st.divider()
 
     # ── Guardar / Abrir projecto ──────────────────────────────────────────────
@@ -298,7 +390,7 @@ with st.sidebar:
     # Guardar inputs (sempre visível — não precisa de cálculo)
     _inp_keys = ["manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
                  "manual_stairs", "col_config", "cols_in_cont_footing",
-                 "portico_slab_map", "portico_tramos", "beam_overrides"]
+                 "portico_slab_map", "portico_tramos", "beam_overrides", "project_info"]
     _inp_snap = {k: st.session_state.get(k) for k in _inp_keys}
     _inp_bytes = _save_inp(_inp_snap)
     st.download_button(
