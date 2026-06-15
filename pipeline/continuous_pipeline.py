@@ -15,7 +15,10 @@ class ContinuousPipeline:
         lines=[ContinuousLine("CL1",["B4","B5"]), ContinuousLine("CL2",["B6","B7"])]
         analyzer=ContinuousBeamAnalyzer(); results=[]
         for line in lines:
-            spans=[ContinuousSpan(self.lookup[bid].id,self.lookup[bid].span_m,self.lookup[bid].total_gk(),self.lookup[bid].total_qk()) for bid in line.beam_ids]
+            valid_bids = [bid for bid in line.beam_ids if bid in self.lookup]
+            if len(valid_bids) < 2:
+                continue
+            spans=[ContinuousSpan(self.lookup[bid].id,self.lookup[bid].span_m,self.lookup[bid].total_gk(),self.lookup[bid].total_qk()) for bid in valid_bids]
             ana=analyzer.analyze(spans)
             for r in ana["spans"]:
                 b=self.lookup[r.span_id]
