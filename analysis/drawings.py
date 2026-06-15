@@ -2724,9 +2724,6 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
                     doc.layers.add(lname, color=color)
             msp = doc.modelspace()
 
-            _dxf_text(msp, f'ALCADOS DE PORTICOS — {getattr(project, "name", "")}',
-                      0, 0, 0.25, 'TEXTO', 'LEFT', color=7)
-
             y_cursor = -1.5
             for idx, (auto_label, direction, bms) in enumerate(frames):
                 # Try to find matching pórtico label by column set
@@ -2752,7 +2749,9 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
                                      idx + 1, y_cursor, label=label)
                 y_cursor -= (frame_h + 2.0)
 
-            _dxf_title_block(msp, project, "ALCADOS DE PORTICOS", "1:50")
+            # Title block below all frames (y_cursor already advanced past last frame)
+            _dxf_title_block(msp, project, "ALCADOS DE PORTICOS", "1:50",
+                             x0=0.0, y0=y_cursor)
             out = io.StringIO()
             doc.write(out)
             return out.getvalue().encode('utf-8')
