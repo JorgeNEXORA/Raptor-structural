@@ -1257,6 +1257,8 @@ if run_btn:
             store_snapshot(project, "baseline")
             run_outputs(project)
             st.session_state.project = project
+            st.session_state.drawings_ready = False
+            st.session_state.pop("dxf_porticos", None)
             st.rerun()
         except Exception as exc:
             st.error(f"Erro: {exc}")
@@ -1292,6 +1294,8 @@ if opt_btn and st.session_state.project:
                 store_snapshot(p, "depois_otimizacao")
                 run_outputs(p)
                 st.session_state.project = p
+                st.session_state.drawings_ready = False
+                st.session_state.pop("dxf_porticos", None)
                 st.rerun()
         except Exception as exc:
             st.error(f"Erro otimização: {exc}")

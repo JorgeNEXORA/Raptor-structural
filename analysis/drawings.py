@@ -2686,7 +2686,7 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
         return b""
 
     col_map = {c.id: c for c in project.columns}
-    beams_with_results = [b for b in project.beams if b.result]
+    all_beams = project.beams  # _dxf_frame_elevation handles b.result=None gracefully
 
     # Group tramos by portico_id (preserving definition order)
     pt_groups: dict = {}
@@ -2701,7 +2701,7 @@ def draw_portico_elevations_dxf(project: 'Project', portico_tramos: list) -> byt
         for tr in sorted(tramos, key=lambda x: x["tramo"]):
             pe  = (tr.get("pilar_esq") or "").strip()
             pdi = (tr.get("pilar_dir")  or "").strip()
-            for b in beams_with_results:
+            for b in all_beams:
                 sn = (b.start_node or "").strip()
                 en = (b.end_node   or "").strip()
                 if (sn == pe and en == pdi) or (sn == pdi and en == pe):
