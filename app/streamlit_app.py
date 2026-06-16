@@ -313,12 +313,18 @@ for _key, _val in [
     ("col_config", None),
     ("cols_in_cont_footing", []),
     ("load_cfg", None),
+    ("selected_specialty", "Estruturas"),
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _val
 
 # ─── Logo path ────────────────────────────────────────────────────────────────
 _LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.jpeg")
+import base64 as _b64
+_logo_b64 = ""
+if os.path.exists(_LOGO_PATH):
+    with open(_LOGO_PATH, "rb") as _lf:
+        _logo_b64 = _b64.b64encode(_lf.read()).decode()
 
 # ─── Welcome screen ───────────────────────────────────────────────────────────
 if st.session_state.project_info is None:
@@ -639,39 +645,98 @@ def _draw_portico(pid: str, tramos: list, project_columns: list):
     return fig
 
 
-# ─── Top header bar ───────────────────────────────────────────────────────────
-st.markdown("""
-<div style="
-    background: #0a0e14;
-    border-bottom: 1px solid #c9a84c33;
-    padding: 8px 20px;
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    margin: -1rem -1rem 1rem -1rem;
-">
-    <span style="color:#c9a84c;font-size:1.1rem;font-weight:800;letter-spacing:.15em">RAPTOR</span>
-    <span style="color:#333;font-size:1rem">|</span>
-    <span style="color:#666;font-size:0.8rem;letter-spacing:.05em">CÁLCULO DE ESTRUTURAS EM BETÃO ARMADO</span>
-</div>
-""", unsafe_allow_html=True)
+# ─── Top action bar ───────────────────────────────────────────────────────────
+_pi_hdr = st.session_state.get("project_info") or {}
+_ab1, _ab2, _ab3, _ab4, _ab5, _ab_space, _ab_user = st.columns([1.2, 1, 1, 1.2, 1.2, 4, 2])
+with _ab1:
+    if st.button("＋ Novo", use_container_width=True, help="Novo projeto"):
+        st.session_state.project_info = None
+        st.rerun()
+with _ab2:
+    from core.persistence import save_inputs as _sav_ab
+    _ab_snap = {k: st.session_state.get(k) for k in ["manual_slabs","manual_retaining_walls",
+        "manual_flat_slabs","manual_stairs","col_config","cols_in_cont_footing",
+        "portico_slab_map","portico_tramos","beam_overrides","project_info"]}
+    st.download_button("💾 Guardar", data=_sav_ab(_ab_snap),
+        file_name=f"{(_pi_hdr.get('requerente') or 'projeto').replace(' ','_')}.raptor",
+        mime="application/json", use_container_width=True, help="Guardar projeto")
+with _ab3:
+    if st.session_state.get("dxf_bytes"):
+        st.download_button("📐 DXF", data=st.session_state.dxf_bytes,
+            file_name="estrutura.dxf", mime="application/dxf",
+            use_container_width=True, help="Exportar DXF")
+    else:
+        st.button("📐 DXF", disabled=True, use_container_width=True, help="Correr cálculo primeiro")
+with _ab4:
+    if st.session_state.get("docx_bytes"):
+        st.download_button("📄 Relatório", data=st.session_state.docx_bytes,
+            file_name="relatorio.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True)
+    else:
+        st.button("📄 Relatório", disabled=True, use_container_width=True, help="Correr cálculo primeiro")
+with _ab5:
+    st.button("🖨 Imprimir", disabled=True, use_container_width=True, help="Em desenvolvimento")
+with _ab_user:
+    _requ = (_pi_hdr.get("requerente") or "").strip()
+    _obra = (_pi_hdr.get("local_obra") or "").strip()
+    if _requ or _obra:
+        st.markdown(f"<div style='text-align:right;padding-top:6px'>"
+                    f"<span style='color:#c9a84c;font-size:0.75rem;font-weight:600'>{_requ}</span>"
+                    f"<span style='color:#444;font-size:0.7rem'> · {_obra}</span></div>",
+                    unsafe_allow_html=True)
+st.markdown("<div style='height:1px;background:#c9a84c22;margin:0 0 12px 0'></div>", unsafe_allow_html=True)
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    # Header com logo + nome do projeto
     _pi = st.session_state.get("project_info") or {}
-    _sb_h1, _sb_h2 = st.columns([1, 3])
-    if os.path.exists(_LOGO_PATH):
-        _sb_h1.image(_LOGO_PATH, width=52)
-    _sb_h2.markdown(
-        f"<span style='color:#c9a84c;font-weight:700;font-size:0.95rem;letter-spacing:.08em'>RAPTOR</span><br>"
-        f"<span style='color:#c9a84c99;font-size:0.78rem;font-weight:600'>{_pi.get('requerente','') or 'Novo projeto'}</span><br>"
-        f"<span style='color:#666;font-size:0.7rem'>{_pi.get('local_obra','')}</span>",
-        unsafe_allow_html=True,
-    )
 
-    # Botão para voltar ao ecrã de projetos
-    if st.button("Dados do Trabalho", use_container_width=True):
+    # ── Logo + project header ─────────────────────────────────────────────────
+    st.markdown(f"""
+    <div style="padding:14px 12px 10px 12px;border-bottom:1px solid #c9a84c22;margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <img src="data:image/jpeg;base64,{_logo_b64}" style="width:38px;height:38px;object-fit:contain"/>
+        <div>
+          <div style="color:#c9a84c;font-size:0.95rem;font-weight:800;letter-spacing:.12em;line-height:1.1">RAPTOR</div>
+          <div style="color:#444;font-size:0.6rem;letter-spacing:.08em">NEXORA · proarkh.com</div>
+        </div>
+      </div>
+      <div style="color:#c9a84c99;font-size:0.72rem;font-weight:600;letter-spacing:.04em;margin-bottom:1px">
+        {(_pi.get('requerente') or 'Novo projeto').upper()}
+      </div>
+      <div style="color:#555;font-size:0.65rem">{_pi.get('local_obra','')}{', ' + _pi.get('freguesia','') if _pi.get('freguesia') else ''}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Specialty navigation ──────────────────────────────────────────────────
+    st.markdown("<p style='color:#c9a84c;font-size:0.6rem;letter-spacing:.15em;margin:8px 12px 4px 12px'>ESPECIALIDADES</p>", unsafe_allow_html=True)
+
+    _specialty_options = ["Estruturas", "Águas", "Esgotos", "SCIE", "ITED", "Elétrico", "AVAC", "Térmica", "Acústica", "Arranjos Exteriores"]
+    _icons = {"Estruturas": "▸", "Águas": "▸", "Esgotos": "▸", "SCIE": "▸", "ITED": "▸",
+              "Elétrico": "▸", "AVAC": "▸", "Térmica": "▸", "Acústica": "▸", "Arranjos Exteriores": "▸"}
+    _available = {"Estruturas"}  # Only Estruturas is active for now
+
+    _cur_spec = st.session_state.get("selected_specialty", "Estruturas")
+
+    for _sp in _specialty_options:
+        _is_sel = (_cur_spec == _sp)
+        _avail = _sp in _available
+        _color = "#c9a84c" if _is_sel else ("#cccccc" if _avail else "#2d2d2d")
+        _bg = "#c9a84c15" if _is_sel else "transparent"
+        _bl = "border-left:2px solid #c9a84c;" if _is_sel else "border-left:2px solid #1a1a1a;"
+        _em = "" if _avail else " <span style='float:right;font-size:0.52rem;color:#2a2a2a;background:#141414;padding:1px 4px;border-radius:6px'>em breve</span>"
+        st.markdown(f"""<div style="{_bl}background:{_bg};padding:6px 10px 6px 12px;
+            margin:0;color:{_color};font-size:0.78rem;letter-spacing:.04em;
+            cursor:{'pointer' if _avail else 'default'}">{_icons[_sp]} {_sp}{_em}</div>""",
+            unsafe_allow_html=True)
+        if _avail and not _is_sel:
+            if st.button(f"→ {_sp}", key=f"nav_{_sp}", use_container_width=True):
+                st.session_state.selected_specialty = _sp
+                st.rerun()
+
+    st.markdown("<div style='height:1px;background:#c9a84c22;margin:8px 0'></div>", unsafe_allow_html=True)
+
+    # ── Bottom actions ────────────────────────────────────────────────────────
+    if st.button("✏️  Dados do Trabalho", use_container_width=True):
         st.session_state.project_info = None
         st.rerun()
     st.divider()
@@ -1792,6 +1857,17 @@ if gen_docx and st.session_state.project:
 
 
 # ─── Main content ─────────────────────────────────────────────────────────────
+_sel_spec = st.session_state.get("selected_specialty", "Estruturas")
+if _sel_spec != "Estruturas":
+    st.markdown(f"""
+    <div style="text-align:center;padding:80px 20px">
+      <div style="color:#c9a84c;font-size:2rem;font-weight:700;letter-spacing:.1em;margin-bottom:12px">{_sel_spec.upper()}</div>
+      <div style="color:#333;font-size:1rem;letter-spacing:.05em">Especialidade em desenvolvimento</div>
+      <div style="color:#222;font-size:0.8rem;margin-top:8px">Disponível em versão futura do RAPTOR</div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
 if "predim_results" in st.session_state and st.session_state["predim_results"]:
     st.subheader("📐 Pré-dimensionamento de pilares")
     pd_rows = []
