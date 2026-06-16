@@ -6,56 +6,62 @@ class TieBeamPlanner:
         footings = project.footings
         columns = {c.id: c for c in project.columns}
 
-        candidates = [f for f in footings if getattr(f.result, "needs_balance_beam", False)]
-        if not candidates:
-            # fallback: connect eccentric footings only if no critical need detected
-            candidates = [f for f in footings if getattr(f, "footing_type", None) and f.footing_type.value == "eccentric"]
+        if not footings:
+            project.tie_beams = []
+            return []
+
+        # EC2 §9.10.2 — vigas de amarração entre TODAS as sapatas isoladas
+        # Algoritmo: árvore de expansão mínima (greedy nearest-neighbor)
+        # Garante que todas as sapatas ficam ligadas com o mínimo de vigas
+        col_pos = {}
+        for f in footings:
+            c = columns.get(f.related_column_id)
+            if c:
+                col_pos[f.id] = (c.x, c.y)
+
+        if len(col_pos) < 2:
+            project.tie_beams = []
+            return []
 
         ties = []
-        used = set()
         counter = 1
+        connected = {next(iter(col_pos))}
+        remaining = {fid: pos for fid, pos in col_pos.items() if fid not in connected}
+        ftg_by_id = {f.id: f for f in footings}
 
-        for f in candidates:
-            if f.id in used:
-                continue
-            c1 = columns[f.related_column_id]
-
+        while remaining:
             best = None
-            for other in footings:
-                if other.id == f.id or other.id in used:
-                    continue
-                c2 = columns[other.related_column_id]
-                dist = hypot(c2.x - c1.x, c2.y - c1.y)
-                if dist < 0.01:
-                    continue
-                # prefer nearest concentric or safe footing
-                score = dist
-                if getattr(other.result, "needs_balance_beam", False):
-                    score += 0.5
-                if best is None or score < best[0]:
-                    best = (score, dist, other)
+            best_dist = float('inf')
+            for c_id in connected:
+                cx, cy = col_pos[c_id]
+                for r_id, (rx, ry) in remaining.items():
+                    d = hypot(rx - cx, ry - cy)
+                    if d < best_dist:
+                        best_dist = d
+                        best = (c_id, r_id, d)
 
             if best is None:
-                continue
+                break
 
-            _, dist, other = best
+            from_id, to_id, dist = best
             ties.append(
                 FoundationTieBeam(
                     id=f"CB.{counter}.1",
-                    start_footing_id=f.id,
-                    end_footing_id=other.id,
+                    start_footing_id=from_id,
+                    end_footing_id=to_id,
                     width_cm=30.0,
                     height_cm=60.0,
                     span_m=dist,
-                    recommendation="Viga de amarração/equilíbrio proposta automaticamente"
+                    recommendation="Viga de amarração/equilíbrio (EC2 §9.10.2)"
                 )
             )
-            used.add(f.id)
-            used.add(other.id)
+            connected.add(to_id)
+            del remaining[to_id]
             counter += 1
 
         project.tie_beams = ties
         return ties
+
 
 class TieBeamDesigner:
     def design(self, tie, start_footing):

@@ -20,7 +20,7 @@ class AutoPipeline:
     def __init__(self):
         self.generator = ModelGenerator()
 
-    def run(self, project: Project, slab_loads: dict | None = None):
+    def run(self, project: Project, slab_loads: dict | None = None, cols_on_wall: list | None = None):
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         code_cfg = load_design_code(root_dir)
 
@@ -218,10 +218,14 @@ class AutoPipeline:
 
         # ── Foundation design ─────────────────────────────────────────────────
         # Build a map of existing footings (preserves user-set footing types)
+        _on_wall = set(cols_on_wall or [])
         _existing_ftg = {f.related_column_id: f for f in project.footings}
         new_footings = []
         _soil_kpa = max(project.soil_allowable_mpa * 1000.0, 50.0)  # kPa
         for c in project.columns:
+            if c.id in _on_wall:
+                # Column sits on retaining wall continuous footing — no isolated footing
+                continue
             if c.id in _existing_ftg:
                 # Reuse existing footing (preserves type/orientation/size set by user)
                 new_footings.append(_existing_ftg[c.id])

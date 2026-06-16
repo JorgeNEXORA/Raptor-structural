@@ -1194,7 +1194,8 @@ if run_btn:
                         _b.width_cm = _tb
                         _b.height_cm = _th
                         _b.effective_depth_cm = _th - 5.0
-            AutoPipeline().run(project, slab_loads=slab_loads)
+            _cols_on_wall = st.session_state.get("cols_in_cont_footing", [])
+            AutoPipeline().run(project, slab_loads=slab_loads, cols_on_wall=_cols_on_wall)
             ProjectAdvisor().project_score(project)
             ProjectAdvisor().generate_advice(project)
             store_snapshot(project, "baseline")
