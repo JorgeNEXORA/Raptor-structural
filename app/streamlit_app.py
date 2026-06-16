@@ -2031,7 +2031,7 @@ def _render_slab_tab(tab_slabs, tab_key_prefix, show_catalog=False):
     """Render the shared per-slab editor + results table for a filtered list of slabs."""
     from core.model import SlabType
     if not tab_slabs:
-        st.info("Sem lajes deste tipo. Adiciona no tab ⬜ Lajes Aligeiradas (seleciona o tipo correto).")
+        st.info("Sem lajes deste tipo. Adiciona usando o formulário neste tab e clica **▶ Correr cálculo**.")
         return
 
     # Lajes manuais filter
@@ -2284,10 +2284,105 @@ with tab_lajes_alig:
 
 # ── Lajes Maciças ─────────────────────────────────────────────────────────────
 with tab_lajes_mac:
-    if not p:
-        st.info("Corre o cálculo para ver os resultados.", icon="ℹ️")
+    st.subheader("Dados de entrada")
+    _lcfg_mac = st.session_state.get("load_cfg") or {}
+    _zona_map_mac = {
+        "Habitável": (_lcfg_mac.get("gk_piso", 6.15), _lcfg_mac.get("qk_piso", 2.0)),
+        "Garagem":   (_lcfg_mac.get("gk_gar",  4.80), _lcfg_mac.get("qk_gar",  2.5)),
+        "Varanda":   (_lcfg_mac.get("gk_var",  5.50), _lcfg_mac.get("qk_var",  3.0)),
+        "Cobertura": (_lcfg_mac.get("gk_cob",  5.50), _lcfg_mac.get("qk_cob",  1.0)),
+    }
+    _mac_type_opts = ["Maciça 1D", "Maciça 2D", "Consola"]
+    _mac_type_map  = {"Maciça 1D": "one_way", "Maciça 2D": "two_way", "Consola": "cantilever"}
+    _mac_type_rev  = {"one_way": "Maciça 1D", "two_way": "Maciça 2D", "cantilever": "Consola", "ribbed": "Aligeirada"}
+    _mac_lvl_opts  = ["piso", "cobertura"]
+    _mac_dir_opts  = ["X", "Y"]
+    _mac_zona_opts = list(_zona_map_mac.keys())
+
+    # ── Lista de lajes maciças ────────────────────────────────────────────────
+    _mac_manual = [s for s in st.session_state.manual_slabs
+                   if (s.slab_type.value if hasattr(s.slab_type,"value") else str(s.slab_type)) in ("one_way","two_way","cantilever")]
+    if _mac_manual:
+        for _i, _ms in enumerate(st.session_state.manual_slabs):
+            _ms_tp = _ms.slab_type.value if hasattr(_ms.slab_type,"value") else str(_ms.slab_type)
+            if _ms_tp not in ("one_way","two_way","cantilever"):
+                continue
+            _global_i = st.session_state.manual_slabs.index(_ms)
+            _mca, _mcb, _mcc = st.columns([5, 1, 1])
+            _mca.caption(f"**{_ms.id}** {getattr(_ms,'level','piso')} | {_ms.span_m}m "
+                         f"h={int(_ms.thickness_cm)}cm  Rev={getattr(_ms,'rev_kn_m2',1.0)} "
+                         f"Div={getattr(_ms,'div_kn_m2',1.5)} [{_mac_type_rev.get(_ms_tp, _ms_tp)}]")
+            if _mcb.button("✏️", key=f"edit_mac_{_global_i}", help="Editar"):
+                st.session_state["_prefill_slab_mac"] = {
+                    "id": _ms.id, "span_m": _ms.span_m, "thickness_cm": _ms.thickness_cm,
+                    "effective_depth_cm": _ms.effective_depth_cm,
+                    "slab_type_lbl": _mac_type_rev.get(_ms_tp, "Maciça 1D"),
+                    "level": getattr(_ms, "level", "piso"),
+                    "direction": getattr(_ms, "direction", "x") or "x",
+                    "rev_kn_m2": getattr(_ms, "rev_kn_m2", 1.0),
+                    "div_kn_m2": getattr(_ms, "div_kn_m2", 1.5),
+                    "psi1": getattr(_ms, "psi1", 0.3),
+                }
+                st.session_state.manual_slabs.pop(_global_i)
+                st.rerun()
+            if _mcc.button("🗑", key=f"del_mac_{_global_i}", help="Apagar"):
+                st.session_state.manual_slabs.pop(_global_i)
+                st.rerun()
     else:
-        _mac_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) in ("one_way", "cantilever")]
+        st.caption("Sem lajes maciças definidas. Usa o formulário abaixo para adicionar.")
+
+    # ── Formulário adicionar / editar ─────────────────────────────────────────
+    _pmac = st.session_state.get("_prefill_slab_mac", {})
+    _is_editing_mac = bool(_pmac)
+    _form_label_mac = f"✏️ Editar laje {_pmac.get('id','')}" if _is_editing_mac else "➕ Adicionar laje maciça"
+    with st.expander(_form_label_mac, expanded=_is_editing_mac or not _mac_manual):
+        _mac_type_def = _pmac.get("slab_type_lbl", "Maciça 1D")
+        _mac_type_idx = _mac_type_opts.index(_mac_type_def) if _mac_type_def in _mac_type_opts else 0
+        _mac_lvl_idx  = _mac_lvl_opts.index(_pmac["level"]) if _pmac.get("level") in _mac_lvl_opts else 0
+        _mac_dir_idx  = _mac_dir_opts.index(_pmac.get("direction","x").upper()) if _pmac.get("direction","x").upper() in _mac_dir_opts else 0
+        _mac_fk = f"_mac_form_{'edit' if _is_editing_mac else 'new'}_{_pmac.get('id','')}"
+        if st.session_state.get("_mac_form_last") != _mac_fk:
+            for _k in ("mf_type","mf_lvl","mf_dir","mf_zona","mf_rev","mf_div","mf_psi1","mf_id","mf_span","mf_thk","mf_d"):
+                st.session_state.pop(_k, None)
+            st.session_state["_mac_form_last"] = _mac_fk
+        with st.form("form_add_mac_sb", clear_on_submit=True):
+            _mb1, _mb2 = st.columns(2)
+            _mac_id_sb   = _mb1.text_input("ID", value=_pmac.get("id", f"LM{len(_mac_manual)+1}"), key="mf_id")
+            _mac_span_sb = _mb1.number_input("Vão (m)", value=float(_pmac.get("span_m", 4.0)), min_value=0.5, step=0.25, key="mf_span")
+            _mac_thk_sb  = _mb1.number_input("Esp. (cm)", value=int(_pmac.get("thickness_cm", 20)), min_value=8, max_value=60, step=1, key="mf_thk")
+            _mac_d_sb    = _mb1.number_input("d útil (cm)", value=int(_pmac.get("effective_depth_cm", 16)), min_value=5, max_value=55, step=1, key="mf_d")
+            _mac_type_sb = _mb2.selectbox("Tipo", _mac_type_opts, index=_mac_type_idx, key="mf_type")
+            _mac_lvl_sb  = _mb2.selectbox("Nível", _mac_lvl_opts, index=_mac_lvl_idx, key="mf_lvl")
+            _mac_dir_sb  = _mb2.selectbox("Direção", _mac_dir_opts, index=_mac_dir_idx, key="mf_dir")
+            _mac_zona_sb = _mb2.selectbox("Zona (Qk)", _mac_zona_opts, key="mf_zona")
+            _mc1, _mc2, _mc3 = st.columns(3)
+            _mac_rev_sb  = _mc1.number_input("Rev. (kN/m²)", value=float(_pmac.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1, help="Revestimentos", key="mf_rev")
+            _mac_div_sb  = _mc2.number_input("Div. (kN/m²)", value=float(_pmac.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1, help="Divisórias", key="mf_div")
+            _mac_psi1_sb = _mc3.number_input("ψ₁", value=float(_pmac.get("psi1", 0.3)), min_value=0.0, max_value=1.0, step=0.1,
+                                              help="SLS quasi-permanente (0.30 habitável, 0.70 armazém)", key="mf_psi1")
+            _mac_lbl = "✅ Guardar alterações" if _is_editing_mac else "➕ Adicionar laje maciça"
+            if st.form_submit_button(_mac_lbl):
+                _gk_mac, _qk_mac = _zona_map_mac[_mac_zona_sb]
+                _ns_mac = SlabPanel(
+                    id=_mac_id_sb.strip() or f"LM{len(_mac_manual)+1}",
+                    span_m=float(_mac_span_sb),
+                    thickness_cm=float(_mac_thk_sb),
+                    effective_depth_cm=float(_mac_d_sb),
+                    slab_type=SlabType(_mac_type_map[_mac_type_sb]),
+                    gk_kn_m2=_gk_mac, qk_kn_m2=_qk_mac,
+                    direction=_mac_dir_sb.lower(),
+                    level=_mac_lvl_sb,
+                    rev_kn_m2=float(_mac_rev_sb),
+                    div_kn_m2=float(_mac_div_sb),
+                    psi1=float(_mac_psi1_sb),
+                )
+                st.session_state.manual_slabs.append(_ns_mac)
+                st.session_state.pop("_prefill_slab_mac", None)
+                st.rerun()
+
+    st.divider()
+    if p:
+        _mac_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) in ("one_way", "two_way", "cantilever")]
         _render_slab_tab(_mac_slabs, "mac", show_catalog=False)
 
 # ── Lajes Armada em Cruz ──────────────────────────────────────────────────────
