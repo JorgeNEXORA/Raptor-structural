@@ -332,205 +332,150 @@ if st.session_state.project_info is None:
     st.markdown("""
     <style>
     [data-testid="stSidebar"] {display: none !important;}
-    [data-testid="stApp"], .main, .block-container {
-        background: #0f1419 !important;
-    }
-    .block-container {
-        padding-top: 3rem !important;
-    }
-    .welcome-logo-wrap {
-        text-align: center;
-        margin-bottom: 0.5rem;
-    }
-    .welcome-title {
-        font-size: 2.8rem;
-        font-weight: 800;
-        letter-spacing: 0.20em;
-        color: #c9a84c;
-        margin: 0 0 0.1rem 0;
-        text-align: center;
-        line-height: 1.1;
-    }
-    .welcome-sub {
-        color: #555;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        text-align: center;
-        margin-bottom: 1.6rem;
-    }
-    .welcome-divider {
-        border: none;
-        border-top: 1px solid #c9a84c22;
-        margin: 0.8rem 0 1.2rem 0;
-    }
-    .welcome-form-wrap {
-        border: 1px solid #1e2836;
-        background: #0c1018;
-        border-radius: 6px;
-        padding: 1.4rem 1.6rem 1rem 1.6rem;
-        margin-bottom: 1rem;
-    }
-    .welcome-form-title {
-        color: #c9a84c !important;
-        font-size: 0.72rem !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.12em !important;
-        margin-bottom: 0.9rem !important;
-    }
-    .welcome-or {
-        text-align: center;
-        color: #444;
-        font-size: 0.72rem;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        margin: 0.8rem 0 0.4rem 0;
-    }
+    body, [data-testid="stApp"], .main, .block-container { background: #0f1419 !important; }
+    .block-container { padding-top: 2rem !important; max-width: 900px !important; }
+    .ws-header { display:flex; align-items:center; gap:18px; margin-bottom:28px; }
+    .ws-title  { color:#c9a84c; font-size:2.2rem; font-weight:800; letter-spacing:.18em; line-height:1; }
+    .ws-sub    { color:#444; font-size:0.75rem; letter-spacing:.12em; text-transform:uppercase; }
+    .ws-panel  { background:#0c1018; border:1px solid #1e2836; border-radius:8px; padding:24px 20px; height:100%; }
+    .ws-panel-title { color:#c9a84c; font-size:0.65rem; letter-spacing:.16em; text-transform:uppercase; margin-bottom:16px; }
+    .ws-proj-item { background:#111820; border:1px solid #1a2030; border-radius:5px;
+                    padding:10px 14px; margin-bottom:8px; cursor:pointer; }
+    .ws-proj-name { color:#e8e8e8; font-size:0.9rem; font-weight:600; }
+    .ws-proj-sub  { color:#555; font-size:0.72rem; margin-top:2px; }
+    .ws-empty     { color:#2a2a2a; font-size:0.8rem; text-align:center; padding:32px 0; }
+    .ws-divider   { border:none; border-top:1px solid #1e2836; margin:16px 0; }
     </style>
     """, unsafe_allow_html=True)
 
-    # ── Header (always shown) ─────────────────────────────────────────────────
-    _wc1, _wc2, _wc3 = st.columns([1, 2.0, 1])
-    with _wc2:
+    # ── Logo + título ─────────────────────────────────────────────────────────
+    _wh1, _wh2 = st.columns([0.08, 0.92])
+    with _wh1:
         if os.path.exists(_LOGO_PATH):
-            st.markdown('<div class="welcome-logo-wrap">', unsafe_allow_html=True)
-            st.image(_LOGO_PATH, width=120)
-            st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('<p class="welcome-title">RAPTOR</p>', unsafe_allow_html=True)
-        st.markdown('<p class="welcome-sub">Cálculo de Estruturas em Betão Armado</p>', unsafe_allow_html=True)
-        st.markdown('<hr class="welcome-divider">', unsafe_allow_html=True)
+            st.image(_LOGO_PATH, width=64)
+    with _wh2:
+        st.markdown('<div class="ws-title">RAPTOR</div>'
+                    '<div class="ws-sub">Cálculo de Estruturas em Betão Armado · NEXORA</div>',
+                    unsafe_allow_html=True)
 
-    _tipo_obra_opts = ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"]
+    st.markdown("<div style='height:4px;background:linear-gradient(90deg,#c9a84c,transparent);margin:0 0 24px 0'></div>",
+                unsafe_allow_html=True)
 
-    if st.session_state.recent_projects:
-        # ── Two-column layout: recent projects left, new project right ────────
-        _wcol_rec, _wcol_new = st.columns([1.6, 1])
+    # ── Dois painéis ─────────────────────────────────────────────────────────
+    _wleft, _wright = st.columns([1, 1.8])
 
-        with _wcol_rec:
-            st.markdown("#### PROJETOS RECENTES")
-            for _rp in st.session_state.recent_projects:
-                _rp_pi = _rp.get("project_info", {})
-                _rp_label = _rp_pi.get("requerente") or "(sem nome)"
-                _rp_sub   = _rp_pi.get("tipo_obra", "")
-                if st.button(f"**{_rp_label}**  \n{_rp_sub}", key=f"rp_{_rp['uid']}", use_container_width=True):
-                    _snap = _rp.get("state_snapshot", {})
-                    for _sk, _sv in _snap.items():
+    # ── Painel esquerdo: acções ───────────────────────────────────────────────
+    with _wleft:
+        st.markdown('<div class="ws-panel">', unsafe_allow_html=True)
+        st.markdown('<div class="ws-panel-title">Ficheiro</div>', unsafe_allow_html=True)
+
+        _show_new  = st.session_state.get("_ws_show_new", False)
+        _show_open = st.session_state.get("_ws_show_open", False)
+
+        _btn_new  = st.button("📄  New",  use_container_width=True, key="ws_new_btn")
+        _btn_open = st.button("📂  Open…", use_container_width=True, key="ws_open_btn")
+
+        if _btn_new:
+            st.session_state["_ws_show_new"]  = True
+            st.session_state["_ws_show_open"] = False
+            st.rerun()
+        if _btn_open:
+            st.session_state["_ws_show_new"]  = False
+            st.session_state["_ws_show_open"] = True
+            st.rerun()
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Painel direito: projetos existentes ───────────────────────────────────
+    with _wright:
+        st.markdown('<div class="ws-panel">', unsafe_allow_html=True)
+        st.markdown('<div class="ws-panel-title">Projetos Existentes</div>', unsafe_allow_html=True)
+
+        _recents = st.session_state.recent_projects
+        if _recents:
+            for _rp in _recents:
+                _rp_pi    = _rp.get("project_info", {})
+                _rp_name  = _rp_pi.get("requerente") or "(sem nome)"
+                _rp_tipo  = _rp_pi.get("tipo_obra", "")
+                _rp_loc   = _rp_pi.get("morada_obra", "")
+                _rp_info  = " · ".join(x for x in [_rp_tipo, _rp_loc] if x)
+                if st.button(f"**{_rp_name}**", key=f"rp_{_rp['uid']}", use_container_width=True,
+                             help=_rp_info or "Clica para abrir"):
+                    for _sk, _sv in _rp.get("state_snapshot", {}).items():
                         if _sv is not None:
                             st.session_state[_sk] = _sv
                     st.session_state.project_info = _rp_pi
+                    st.session_state.pop("_ws_show_new", None)
+                    st.session_state.pop("_ws_show_open", None)
                     st.rerun()
+                st.caption(_rp_info)
+        else:
+            st.markdown('<div class="ws-empty">Sem projetos recentes</div>', unsafe_allow_html=True)
 
-        with _wcol_new:
-            st.markdown("#### NOVO PROJETO")
-            st.markdown('<p class="welcome-form-title">Dados do Trabalho</p>', unsafe_allow_html=True)
-            with st.form("form_dados_trabalho", border=False):
-                _wf1, _wf2 = st.columns(2)
-                _req         = _wf1.text_input("Nome do requerente")
-                _morada_req  = _wf2.text_input("Morada do requerente")
-                _morada_obra = _wf1.text_input("Morada da obra")
-                _tipo_obra   = _wf2.selectbox("Tipo de obra", _tipo_obra_opts)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-                st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
-                _wb1, _wb2 = st.columns(2)
-                _novo = _wb1.form_submit_button("Novo Projeto", use_container_width=True, type="primary")
-                _abrir_lbl = _wb2.form_submit_button("Abrir Projeto…", use_container_width=True)
+    # ── Formulário New ────────────────────────────────────────────────────────
+    if st.session_state.get("_ws_show_new"):
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="ws-panel">', unsafe_allow_html=True)
+        st.markdown('<div class="ws-panel-title">Dados do Trabalho — Novo Projeto</div>', unsafe_allow_html=True)
+        _tipo_obra_opts = ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"]
+        with st.form("form_dados_trabalho_new", clear_on_submit=False):
+            _nf1, _nf2 = st.columns(2)
+            _req         = _nf1.text_input("Nome do requerente")
+            _morada_req  = _nf2.text_input("Morada do requerente")
+            _morada_obra = _nf1.text_input("Morada da obra")
+            _tipo_obra   = _nf2.selectbox("Tipo de obra", _tipo_obra_opts)
+            _nb1, _nb2 = st.columns(2)
+            _submit_new = _nb1.form_submit_button("▶  Criar projeto", use_container_width=True, type="primary")
+            _cancel_new = _nb2.form_submit_button("Cancelar", use_container_width=True)
+            if _submit_new:
+                st.session_state.project_info = {
+                    "requerente": _req.strip(), "morada_req": _morada_req.strip(),
+                    "morada_obra": _morada_obra.strip(), "tipo_obra": _tipo_obra,
+                }
+                import uuid as _uuid
+                _snap = {k: st.session_state.get(k) for k in [
+                    "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
+                    "manual_stairs", "col_config", "cols_in_cont_footing",
+                    "portico_slab_map", "portico_tramos", "beam_overrides"]}
+                _rpe = {"uid": str(_uuid.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap}
+                st.session_state.recent_projects = [_rpe] + st.session_state.recent_projects[:9]
+                st.session_state.pop("_ws_show_new", None)
+                st.rerun()
+            if _cancel_new:
+                st.session_state.pop("_ws_show_new", None)
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-                if _novo or _abrir_lbl:
-                    st.session_state.project_info = {
-                        "requerente":     _req.strip(),
-                        "morada_req":     _morada_req.strip(),
-                        "morada_obra":    _morada_obra.strip(),
-                        "tipo_obra":      _tipo_obra,
-                    }
-                    if _novo:
-                        import uuid as _uuid
-                        _snap = {k: st.session_state.get(k) for k in [
-                            "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
-                            "manual_stairs", "col_config", "cols_in_cont_footing",
-                            "portico_slab_map", "portico_tramos", "beam_overrides"]}
-                        _rp_entry = {"uid": str(_uuid.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap}
-                        st.session_state.recent_projects = [_rp_entry] + [r for r in st.session_state.recent_projects if r["uid"] != _rp_entry["uid"]][:9]
-                    st.rerun()
-
-            # Abrir ficheiro .raptor directamente
-            st.markdown('<p class="welcome-or">ou abrir ficheiro existente</p>', unsafe_allow_html=True)
-            _wup = st.file_uploader("", type=["raptor", "json"], label_visibility="collapsed", key="wup_recents")
-            if _wup is not None:
-                try:
-                    from core.persistence import load_inputs as _li
-                    _loaded = _li(_wup.read())
-                    for _k, _v in _loaded.items():
-                        st.session_state[_k] = _v
-                    st.session_state.project_info = _loaded.get("project_info") or {
-                        "requerente": "", "morada_req": "", "morada_obra": "", "tipo_obra": "Habitação"
-                    }
-                    import uuid as _uuid2
-                    _snap2 = {k: st.session_state.get(k) for k in [
-                        "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
-                        "manual_stairs", "col_config", "cols_in_cont_footing",
-                        "portico_slab_map", "portico_tramos", "beam_overrides"]}
-                    _rp_entry2 = {"uid": str(_uuid2.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap2}
-                    st.session_state.recent_projects = [_rp_entry2] + [r for r in st.session_state.recent_projects if r["uid"] != _rp_entry2["uid"]][:9]
-                    st.rerun()
-                except Exception:
-                    st.error("Não foi possível abrir o ficheiro.")
-
-    else:
-        # ── Centred welcome form (no recent projects) ─────────────────────────
-        _wc1b, _wc2b, _wc3b = st.columns([1, 2.0, 1])
-        with _wc2b:
-            st.markdown('<p class="welcome-form-title">Dados do Trabalho</p>', unsafe_allow_html=True)
-            with st.form("form_dados_trabalho", border=False):
-                _wf1, _wf2 = st.columns(2)
-                _req         = _wf1.text_input("Nome do requerente")
-                _morada_req  = _wf2.text_input("Morada do requerente")
-                _morada_obra = _wf1.text_input("Morada da obra")
-                _tipo_obra   = _wf2.selectbox("Tipo de obra", _tipo_obra_opts)
-
-                st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
-                _wb1, _wb2 = st.columns(2)
-                _novo = _wb1.form_submit_button("Novo Projeto", use_container_width=True, type="primary")
-                _abrir_lbl = _wb2.form_submit_button("Abrir Projeto…", use_container_width=True)
-
-                if _novo or _abrir_lbl:
-                    st.session_state.project_info = {
-                        "requerente":     _req.strip(),
-                        "morada_req":     _morada_req.strip(),
-                        "morada_obra":    _morada_obra.strip(),
-                        "tipo_obra":      _tipo_obra,
-                    }
-                    if _novo:
-                        import uuid as _uuid
-                        _snap = {k: st.session_state.get(k) for k in [
-                            "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
-                            "manual_stairs", "col_config", "cols_in_cont_footing",
-                            "portico_slab_map", "portico_tramos", "beam_overrides"]}
-                        _rp_entry = {"uid": str(_uuid.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap}
-                        st.session_state.recent_projects = [_rp_entry] + [r for r in st.session_state.recent_projects if r["uid"] != _rp_entry["uid"]][:9]
-                    st.rerun()
-
-            # Abrir ficheiro .raptor directamente
-            st.markdown('<p class="welcome-or">ou abrir ficheiro existente</p>', unsafe_allow_html=True)
-            _wup = st.file_uploader("", type=["raptor", "json"], label_visibility="collapsed")
-            if _wup is not None:
-                try:
-                    from core.persistence import load_inputs as _li
-                    _loaded = _li(_wup.read())
-                    for _k, _v in _loaded.items():
-                        st.session_state[_k] = _v
-                    st.session_state.project_info = _loaded.get("project_info") or {
-                        "requerente": "", "morada_req": "", "morada_obra": "", "tipo_obra": "Habitação"
-                    }
-                    import uuid as _uuid2
-                    _snap2 = {k: st.session_state.get(k) for k in [
-                        "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
-                        "manual_stairs", "col_config", "cols_in_cont_footing",
-                        "portico_slab_map", "portico_tramos", "beam_overrides"]}
-                    _rp_entry2 = {"uid": str(_uuid2.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap2}
-                    st.session_state.recent_projects = [_rp_entry2] + [r for r in st.session_state.recent_projects if r["uid"] != _rp_entry2["uid"]][:9]
-                    st.rerun()
-                except Exception:
-                    st.error("Não foi possível abrir o ficheiro.")
+    # ── Formulário Open ───────────────────────────────────────────────────────
+    if st.session_state.get("_ws_show_open"):
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="ws-panel">', unsafe_allow_html=True)
+        st.markdown('<div class="ws-panel-title">Abrir Ficheiro .raptor</div>', unsafe_allow_html=True)
+        _wup = st.file_uploader("Seleciona um ficheiro .raptor ou .json", type=["raptor", "json"],
+                                label_visibility="collapsed", key="ws_open_upload")
+        if _wup is not None:
+            try:
+                from core.persistence import load_inputs as _li
+                _loaded = _li(_wup.read())
+                for _k, _v in _loaded.items():
+                    st.session_state[_k] = _v
+                st.session_state.project_info = _loaded.get("project_info") or {
+                    "requerente": "", "morada_req": "", "morada_obra": "", "tipo_obra": "Habitação"
+                }
+                import uuid as _uuid2
+                _snap2 = {k: st.session_state.get(k) for k in [
+                    "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
+                    "manual_stairs", "col_config", "cols_in_cont_footing",
+                    "portico_slab_map", "portico_tramos", "beam_overrides"]}
+                _rpe2 = {"uid": str(_uuid2.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap2}
+                st.session_state.recent_projects = [_rpe2] + st.session_state.recent_projects[:9]
+                st.session_state.pop("_ws_show_open", None)
+                st.rerun()
+            except Exception:
+                st.error("Não foi possível abrir o ficheiro.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     st.stop()
 
