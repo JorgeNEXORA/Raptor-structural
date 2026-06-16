@@ -399,12 +399,13 @@ if st.session_state.project_info is None:
         st.markdown('<hr class="welcome-divider">', unsafe_allow_html=True)
 
         st.markdown('<p class="welcome-form-title">Dados do Trabalho</p>', unsafe_allow_html=True)
+        _tipo_obra_opts = ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"]
         with st.form("form_dados_trabalho", border=False):
             _wf1, _wf2 = st.columns(2)
-            _req  = _wf1.text_input("Requerente")
-            _obra = _wf2.text_input("Local da Obra")
-            _freg = _wf1.text_input("Freguesia")
-            _conc = _wf2.text_input("Concelho")
+            _req         = _wf1.text_input("Nome do requerente")
+            _morada_req  = _wf2.text_input("Morada do requerente")
+            _morada_obra = _wf1.text_input("Morada da obra")
+            _tipo_obra   = _wf2.selectbox("Tipo de obra", _tipo_obra_opts)
 
             st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
             _wb1, _wb2 = st.columns(2)
@@ -413,10 +414,10 @@ if st.session_state.project_info is None:
 
             if _novo or _abrir_lbl:
                 st.session_state.project_info = {
-                    "requerente": _req.strip(),
-                    "local_obra": _obra.strip(),
-                    "freguesia":  _freg.strip(),
-                    "concelho":   _conc.strip(),
+                    "requerente":     _req.strip(),
+                    "morada_req":     _morada_req.strip(),
+                    "morada_obra":    _morada_obra.strip(),
+                    "tipo_obra":      _tipo_obra,
                 }
                 st.rerun()
 
@@ -430,7 +431,7 @@ if st.session_state.project_info is None:
                 for _k, _v in _loaded.items():
                     st.session_state[_k] = _v
                 st.session_state.project_info = _loaded.get("project_info") or {
-                    "requerente": "", "local_obra": "", "freguesia": "", "concelho": ""
+                    "requerente": "", "morada_req": "", "morada_obra": "", "tipo_obra": "Habitação"
                 }
                 st.rerun()
             except Exception:
@@ -678,7 +679,7 @@ with _ab5:
     st.button("🖨 Imprimir", disabled=True, use_container_width=True, help="Em desenvolvimento")
 with _ab_user:
     _requ = (_pi_hdr.get("requerente") or "").strip()
-    _obra = (_pi_hdr.get("local_obra") or "").strip()
+    _obra = (_pi_hdr.get("morada_obra") or "").strip()
     if _requ or _obra:
         st.markdown(f"<div style='text-align:right;padding-top:6px'>"
                     f"<span style='color:#c9a84c;font-size:0.75rem;font-weight:600'>{_requ}</span>"
@@ -703,31 +704,44 @@ with st.sidebar:
       <div style="color:#c9a84c99;font-size:0.72rem;font-weight:600;letter-spacing:.04em;margin-bottom:1px">
         {(_pi.get('requerente') or 'Novo projeto').upper()}
       </div>
-      <div style="color:#555;font-size:0.65rem">{_pi.get('local_obra','')}{', ' + _pi.get('freguesia','') if _pi.get('freguesia') else ''}</div>
+      <div style="color:#555;font-size:0.65rem">{_pi.get('morada_obra','')}</div>
     </div>
     """, unsafe_allow_html=True)
 
     # ── Specialty navigation ──────────────────────────────────────────────────
     st.markdown("<p style='color:#c9a84c;font-size:0.6rem;letter-spacing:.15em;margin:8px 12px 4px 12px'>ESPECIALIDADES</p>", unsafe_allow_html=True)
 
-    _specialty_options = ["Estruturas", "Águas", "Esgotos", "SCIE", "ITED", "Elétrico", "AVAC", "Térmica", "Acústica", "Arranjos Exteriores"]
-    _icons = {"Estruturas": "▸", "Águas": "▸", "Esgotos": "▸", "SCIE": "▸", "ITED": "▸",
-              "Elétrico": "▸", "AVAC": "▸", "Térmica": "▸", "Acústica": "▸", "Arranjos Exteriores": "▸"}
-    _available = {"Estruturas"}  # Only Estruturas is active for now
-
+    _specialty_cfg = [
+        ("Arquitetura",         "🏛️", "#4a90d9"),
+        ("Estruturas",          "🏗️", "#c9a84c"),
+        ("Águas",               "💧", "#29b6f6"),
+        ("Esgotos",             "🔧", "#ab47bc"),
+        ("SCIE",                "🔥", "#ef5350"),
+        ("ITED",                "📡", "#ffa726"),
+        ("Elétrico",            "⚡", "#ffee58"),
+        ("AVAC",                "❄️", "#26c6da"),
+        ("Térmica",             "🌡️", "#ff7043"),
+        ("Acústica",            "🔊", "#42a5f5"),
+        ("Arranjos Exteriores", "🌿", "#66bb6a"),
+    ]
+    _available = {"Estruturas"}
     _cur_spec = st.session_state.get("selected_specialty", "Estruturas")
 
-    for _sp in _specialty_options:
+    for _sp, _icon, _accent in _specialty_cfg:
         _is_sel = (_cur_spec == _sp)
         _avail = _sp in _available
-        _color = "#c9a84c" if _is_sel else ("#cccccc" if _avail else "#2d2d2d")
-        _bg = "#c9a84c15" if _is_sel else "transparent"
-        _bl = "border-left:2px solid #c9a84c;" if _is_sel else "border-left:2px solid #1a1a1a;"
-        _em = "" if _avail else " <span style='float:right;font-size:0.52rem;color:#2a2a2a;background:#141414;padding:1px 4px;border-radius:6px'>em breve</span>"
-        st.markdown(f"""<div style="{_bl}background:{_bg};padding:6px 10px 6px 12px;
-            margin:0;color:{_color};font-size:0.78rem;letter-spacing:.04em;
-            cursor:{'pointer' if _avail else 'default'}">{_icons[_sp]} {_sp}{_em}</div>""",
-            unsafe_allow_html=True)
+        _color = _accent if _is_sel else (_accent + "99" if _avail else "#2a2a2a")
+        _bg = _accent + "18" if _is_sel else "transparent"
+        _bl = f"border-left:3px solid {_accent};" if _is_sel else "border-left:3px solid #141414;"
+        _em = "" if _avail else "<span style='float:right;font-size:0.5rem;color:#2a2a2a;background:#111;padding:1px 4px;border-radius:6px;margin-top:1px'>em breve</span>"
+        st.markdown(
+            f"""<div style="{_bl}background:{_bg};padding:5px 10px 5px 10px;margin:1px 0;
+                color:{_color};font-size:0.76rem;letter-spacing:.03em;
+                cursor:{'pointer' if _avail else 'default'};display:flex;align-items:center;gap:7px">
+                <span style="font-size:0.9rem">{_icon}</span>
+                <span style="flex:1">{_sp}</span>{_em}</div>""",
+            unsafe_allow_html=True,
+        )
         if _avail and not _is_sel:
             if st.button(f"→ {_sp}", key=f"nav_{_sp}", use_container_width=True):
                 st.session_state.selected_specialty = _sp
@@ -735,10 +749,24 @@ with st.sidebar:
 
     st.markdown("<div style='height:1px;background:#c9a84c22;margin:8px 0'></div>", unsafe_allow_html=True)
 
-    # ── Bottom actions ────────────────────────────────────────────────────────
-    if st.button("✏️  Dados do Trabalho", use_container_width=True):
-        st.session_state.project_info = None
-        st.rerun()
+    # ── Dados do Trabalho (editável inline) ───────────────────────────────────
+    _tipo_obra_opts_sb = ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"]
+    with st.expander("📋  Dados do Trabalho", expanded=False):
+        _pi_edit = st.session_state.get("project_info") or {}
+        with st.form("form_dt_sidebar", clear_on_submit=False):
+            _dt_req    = st.text_input("Nome do requerente",  value=_pi_edit.get("requerente", ""))
+            _dt_mreq   = st.text_input("Morada do requerente", value=_pi_edit.get("morada_req", ""))
+            _dt_mobra  = st.text_input("Morada da obra",       value=_pi_edit.get("morada_obra", ""))
+            _dt_tipo_idx = _tipo_obra_opts_sb.index(_pi_edit.get("tipo_obra", "Habitação")) if _pi_edit.get("tipo_obra") in _tipo_obra_opts_sb else 0
+            _dt_tipo   = st.selectbox("Tipo de obra", _tipo_obra_opts_sb, index=_dt_tipo_idx)
+            if st.form_submit_button("💾 Guardar dados", use_container_width=True):
+                st.session_state.project_info = {
+                    "requerente":  _dt_req.strip(),
+                    "morada_req":  _dt_mreq.strip(),
+                    "morada_obra": _dt_mobra.strip(),
+                    "tipo_obra":   _dt_tipo,
+                }
+                st.rerun()
     st.divider()
 
     # ── Guardar / Abrir projecto ──────────────────────────────────────────────
@@ -852,12 +880,9 @@ with st.sidebar:
     # Preenche campos do projeto a partir dos Dados do Trabalho
     _pi = st.session_state.get("project_info") or {}
     project_name = "Projeto Estrutural"
-    location = _pi.get("local_obra") or _pi.get("freguesia") or "—"
+    location = _pi.get("morada_obra") or "—"
     owner = _pi.get("requerente") or ""
-    building_type = st.selectbox("Tipo de Edifício",
-        ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"],
-        key="building_type")
-    designer = st.text_input("Projectista", value="", key="designer")
+    building_type = _pi.get("tipo_obra") or "Habitação"
     soil_mpa = st.number_input(
         "Tensão admissível solo (MPa)",
         value=0.20, min_value=0.05, max_value=2.0, step=0.05, format="%.2f",
@@ -1744,9 +1769,10 @@ if run_btn:
                 fyk_mpa=fyk_mpa,
             )
             # Apply project metadata
-            project.owner         = st.session_state.get("owner", "")
-            project.building_type = st.session_state.get("building_type", "Habitação")
-            project.designer      = st.session_state.get("designer", "")
+            _pi_meta = st.session_state.get("project_info") or {}
+            project.owner         = _pi_meta.get("requerente", "")
+            project.building_type = _pi_meta.get("tipo_obra", "Habitação")
+            project.designer      = ""
             # Apply load configuration (safe even if model fields don't exist yet)
             project.gk_floor_kn_m2 = lcfg.get("gk_piso", 6.15)
             project.qk_floor_kn_m2 = lcfg.get("qk_piso", 2.0)
