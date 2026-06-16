@@ -2304,6 +2304,17 @@ with tab_lajes_mac:
     # ── Lista de lajes maciças ────────────────────────────────────────────────
     _mac_manual = [s for s in st.session_state.manual_slabs
                    if (s.slab_type.value if hasattr(s.slab_type,"value") else str(s.slab_type)) in ("one_way","two_way","cantilever")]
+
+    # Correcção em massa (para lajes adicionadas com tipo errado pelo pipeline antigo)
+    if _mac_manual:
+        _fix_col1, _fix_col2 = st.columns([1, 2])
+        _fix_target = _fix_col1.selectbox("Corrigir todas para →", _mac_type_opts, key="mac_fix_type", label_visibility="collapsed")
+        if _fix_col2.button(f"🔧 Corrigir todas para {_fix_target}", key="fix_mac_types"):
+            _tval = _mac_type_map[_fix_target]
+            for _s in _mac_manual:
+                _s.slab_type = SlabType(_tval)
+            st.rerun()
+
     if _mac_manual:
         for _i, _ms in enumerate(st.session_state.manual_slabs):
             _ms_tp = _ms.slab_type.value if hasattr(_ms.slab_type,"value") else str(_ms.slab_type)
