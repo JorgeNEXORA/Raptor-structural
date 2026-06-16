@@ -2182,16 +2182,14 @@ with tab_lajes_alig:
     _sl_dir_opts  = ["X", "Y"]
     _sl_zona_opts = list(_zona_map_sb.keys())
     # ── Auto-corrige lajes aligeiradas com tipo errado (bug da versão anterior) ─
-    # Só flagra slabs que não começam por "LM" (as LM são maciças intencionais)
+    # Slabs sem prefixo "LM" devem ser sempre ribbed neste tab
     _wrong = [s for s in st.session_state.manual_slabs
               if (s.slab_type.value if hasattr(s.slab_type,"value") else str(s.slab_type)) != "ribbed"
               and not s.id.upper().startswith("LM")]
     if _wrong:
-        st.warning(f"⚠️ {len(_wrong)} laje(s) aligeirada(s) com tipo incorreto. Clica para corrigir.")
-        if st.button("🔧 Corrigir para Aligeirada", key="fix_slab_types"):
-            for _s in _wrong:
-                _s.slab_type = SlabType("ribbed")
-            st.rerun()
+        for _s in _wrong:
+            _s.slab_type = SlabType("ribbed")
+        st.rerun()
 
     # ── Lista de lajes aligeiradas (só ribbed) ────────────────────────────────
     _type_reverse_sb = {"ribbed": "Aligeirada", "one_way": "Maciça 1D",
