@@ -2092,6 +2092,12 @@ def _render_slab_tab(tab_slabs, tab_key_prefix, show_catalog=False):
                 _sl.slab_type = SlabType(_new_st_val)
                 if _new_st_val in ("two_way", "cantilever"):
                     _sl.catalog_id = None
+                # Sync to manual_slabs so change survives next calculation
+                for _ms in st.session_state.manual_slabs:
+                    if _ms.id == _sl.id:
+                        _ms.slab_type = SlabType(_new_st_val)
+                        break
+                st.rerun()
 
             _cur_lv = getattr(_sl, 'level', 'piso')
             _new_lv = _lc1.selectbox(
