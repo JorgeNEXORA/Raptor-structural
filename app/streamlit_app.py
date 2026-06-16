@@ -314,6 +314,7 @@ for _key, _val in [
     ("cols_in_cont_footing", []),
     ("load_cfg", None),
     ("selected_specialty", "Estruturas"),
+    ("recent_projects", []),
 ]:
     if _key not in st.session_state:
         st.session_state[_key] = _val
@@ -388,6 +389,7 @@ if st.session_state.project_info is None:
     </style>
     """, unsafe_allow_html=True)
 
+    # ── Header (always shown) ─────────────────────────────────────────────────
     _wc1, _wc2, _wc3 = st.columns([1, 2.0, 1])
     with _wc2:
         if os.path.exists(_LOGO_PATH):
@@ -398,44 +400,137 @@ if st.session_state.project_info is None:
         st.markdown('<p class="welcome-sub">Cálculo de Estruturas em Betão Armado</p>', unsafe_allow_html=True)
         st.markdown('<hr class="welcome-divider">', unsafe_allow_html=True)
 
-        st.markdown('<p class="welcome-form-title">Dados do Trabalho</p>', unsafe_allow_html=True)
-        _tipo_obra_opts = ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"]
-        with st.form("form_dados_trabalho", border=False):
-            _wf1, _wf2 = st.columns(2)
-            _req         = _wf1.text_input("Nome do requerente")
-            _morada_req  = _wf2.text_input("Morada do requerente")
-            _morada_obra = _wf1.text_input("Morada da obra")
-            _tipo_obra   = _wf2.selectbox("Tipo de obra", _tipo_obra_opts)
+    _tipo_obra_opts = ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"]
 
-            st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
-            _wb1, _wb2 = st.columns(2)
-            _novo = _wb1.form_submit_button("Novo Projeto", use_container_width=True, type="primary")
-            _abrir_lbl = _wb2.form_submit_button("Abrir Projeto…", use_container_width=True)
+    if st.session_state.recent_projects:
+        # ── Two-column layout: recent projects left, new project right ────────
+        _wcol_rec, _wcol_new = st.columns([1.6, 1])
 
-            if _novo or _abrir_lbl:
-                st.session_state.project_info = {
-                    "requerente":     _req.strip(),
-                    "morada_req":     _morada_req.strip(),
-                    "morada_obra":    _morada_obra.strip(),
-                    "tipo_obra":      _tipo_obra,
-                }
-                st.rerun()
+        with _wcol_rec:
+            st.markdown("#### PROJETOS RECENTES")
+            for _rp in st.session_state.recent_projects:
+                _rp_pi = _rp.get("project_info", {})
+                _rp_label = _rp_pi.get("requerente") or "(sem nome)"
+                _rp_sub   = _rp_pi.get("tipo_obra", "")
+                if st.button(f"**{_rp_label}**  \n{_rp_sub}", key=f"rp_{_rp['uid']}", use_container_width=True):
+                    _snap = _rp.get("state_snapshot", {})
+                    for _sk, _sv in _snap.items():
+                        if _sv is not None:
+                            st.session_state[_sk] = _sv
+                    st.session_state.project_info = _rp_pi
+                    st.rerun()
 
-        # Abrir ficheiro .raptor directamente
-        st.markdown('<p class="welcome-or">ou abrir ficheiro existente</p>', unsafe_allow_html=True)
-        _wup = st.file_uploader("", type=["raptor", "json"], label_visibility="collapsed")
-        if _wup is not None:
-            try:
-                from core.persistence import load_inputs as _li
-                _loaded = _li(_wup.read())
-                for _k, _v in _loaded.items():
-                    st.session_state[_k] = _v
-                st.session_state.project_info = _loaded.get("project_info") or {
-                    "requerente": "", "morada_req": "", "morada_obra": "", "tipo_obra": "Habitação"
-                }
-                st.rerun()
-            except Exception:
-                st.error("Não foi possível abrir o ficheiro.")
+        with _wcol_new:
+            st.markdown("#### NOVO PROJETO")
+            st.markdown('<p class="welcome-form-title">Dados do Trabalho</p>', unsafe_allow_html=True)
+            with st.form("form_dados_trabalho", border=False):
+                _wf1, _wf2 = st.columns(2)
+                _req         = _wf1.text_input("Nome do requerente")
+                _morada_req  = _wf2.text_input("Morada do requerente")
+                _morada_obra = _wf1.text_input("Morada da obra")
+                _tipo_obra   = _wf2.selectbox("Tipo de obra", _tipo_obra_opts)
+
+                st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+                _wb1, _wb2 = st.columns(2)
+                _novo = _wb1.form_submit_button("Novo Projeto", use_container_width=True, type="primary")
+                _abrir_lbl = _wb2.form_submit_button("Abrir Projeto…", use_container_width=True)
+
+                if _novo or _abrir_lbl:
+                    st.session_state.project_info = {
+                        "requerente":     _req.strip(),
+                        "morada_req":     _morada_req.strip(),
+                        "morada_obra":    _morada_obra.strip(),
+                        "tipo_obra":      _tipo_obra,
+                    }
+                    if _novo:
+                        import uuid as _uuid
+                        _snap = {k: st.session_state.get(k) for k in [
+                            "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
+                            "manual_stairs", "col_config", "cols_in_cont_footing",
+                            "portico_slab_map", "portico_tramos", "beam_overrides"]}
+                        _rp_entry = {"uid": str(_uuid.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap}
+                        st.session_state.recent_projects = [_rp_entry] + [r for r in st.session_state.recent_projects if r["uid"] != _rp_entry["uid"]][:9]
+                    st.rerun()
+
+            # Abrir ficheiro .raptor directamente
+            st.markdown('<p class="welcome-or">ou abrir ficheiro existente</p>', unsafe_allow_html=True)
+            _wup = st.file_uploader("", type=["raptor", "json"], label_visibility="collapsed", key="wup_recents")
+            if _wup is not None:
+                try:
+                    from core.persistence import load_inputs as _li
+                    _loaded = _li(_wup.read())
+                    for _k, _v in _loaded.items():
+                        st.session_state[_k] = _v
+                    st.session_state.project_info = _loaded.get("project_info") or {
+                        "requerente": "", "morada_req": "", "morada_obra": "", "tipo_obra": "Habitação"
+                    }
+                    import uuid as _uuid2
+                    _snap2 = {k: st.session_state.get(k) for k in [
+                        "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
+                        "manual_stairs", "col_config", "cols_in_cont_footing",
+                        "portico_slab_map", "portico_tramos", "beam_overrides"]}
+                    _rp_entry2 = {"uid": str(_uuid2.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap2}
+                    st.session_state.recent_projects = [_rp_entry2] + [r for r in st.session_state.recent_projects if r["uid"] != _rp_entry2["uid"]][:9]
+                    st.rerun()
+                except Exception:
+                    st.error("Não foi possível abrir o ficheiro.")
+
+    else:
+        # ── Centred welcome form (no recent projects) ─────────────────────────
+        _wc1b, _wc2b, _wc3b = st.columns([1, 2.0, 1])
+        with _wc2b:
+            st.markdown('<p class="welcome-form-title">Dados do Trabalho</p>', unsafe_allow_html=True)
+            with st.form("form_dados_trabalho", border=False):
+                _wf1, _wf2 = st.columns(2)
+                _req         = _wf1.text_input("Nome do requerente")
+                _morada_req  = _wf2.text_input("Morada do requerente")
+                _morada_obra = _wf1.text_input("Morada da obra")
+                _tipo_obra   = _wf2.selectbox("Tipo de obra", _tipo_obra_opts)
+
+                st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
+                _wb1, _wb2 = st.columns(2)
+                _novo = _wb1.form_submit_button("Novo Projeto", use_container_width=True, type="primary")
+                _abrir_lbl = _wb2.form_submit_button("Abrir Projeto…", use_container_width=True)
+
+                if _novo or _abrir_lbl:
+                    st.session_state.project_info = {
+                        "requerente":     _req.strip(),
+                        "morada_req":     _morada_req.strip(),
+                        "morada_obra":    _morada_obra.strip(),
+                        "tipo_obra":      _tipo_obra,
+                    }
+                    if _novo:
+                        import uuid as _uuid
+                        _snap = {k: st.session_state.get(k) for k in [
+                            "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
+                            "manual_stairs", "col_config", "cols_in_cont_footing",
+                            "portico_slab_map", "portico_tramos", "beam_overrides"]}
+                        _rp_entry = {"uid": str(_uuid.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap}
+                        st.session_state.recent_projects = [_rp_entry] + [r for r in st.session_state.recent_projects if r["uid"] != _rp_entry["uid"]][:9]
+                    st.rerun()
+
+            # Abrir ficheiro .raptor directamente
+            st.markdown('<p class="welcome-or">ou abrir ficheiro existente</p>', unsafe_allow_html=True)
+            _wup = st.file_uploader("", type=["raptor", "json"], label_visibility="collapsed")
+            if _wup is not None:
+                try:
+                    from core.persistence import load_inputs as _li
+                    _loaded = _li(_wup.read())
+                    for _k, _v in _loaded.items():
+                        st.session_state[_k] = _v
+                    st.session_state.project_info = _loaded.get("project_info") or {
+                        "requerente": "", "morada_req": "", "morada_obra": "", "tipo_obra": "Habitação"
+                    }
+                    import uuid as _uuid2
+                    _snap2 = {k: st.session_state.get(k) for k in [
+                        "manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
+                        "manual_stairs", "col_config", "cols_in_cont_footing",
+                        "portico_slab_map", "portico_tramos", "beam_overrides"]}
+                    _rp_entry2 = {"uid": str(_uuid2.uuid4()), "project_info": st.session_state.project_info, "state_snapshot": _snap2}
+                    st.session_state.recent_projects = [_rp_entry2] + [r for r in st.session_state.recent_projects if r["uid"] != _rp_entry2["uid"]][:9]
+                    st.rerun()
+                except Exception:
+                    st.error("Não foi possível abrir o ficheiro.")
 
     st.stop()
 
@@ -1962,16 +2057,21 @@ if scores:
 st.divider()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_res, tab_porticos, tab_vfund, tab_vigas, tab_pilares, tab_lajes, tab_sapatas, tab_paredes, tab_muros, tab_fungi, tab_esc, tab_alertas, tab_planta = st.tabs([
-    "📊 Resumo",
-    "🏗️ Pórticos",
-    "🔗 V. Fundação",
-    "🔩 Vigas",
+(tab_lajes_alig, tab_lajes_mac, tab_lajes_cruz,
+ tab_pilares, tab_porticos, tab_vigas, tab_muros, tab_sapatas, tab_esforcos,
+ tab_res, tab_vfund, tab_paredes, tab_fungi, tab_esc, tab_alertas, tab_planta) = st.tabs([
+    "⬜ Lajes Aligeiradas",
+    "🔲 Lajes Maciças",
+    "⊞ L. Armada em Cruz",
     "🏛️ Pilares",
-    "⬜ Lajes",
-    "⬛ Sapatas",
-    "🧱 Paredes",
+    "🏗️ Pórticos",
+    "🔩 Vigas",
     "🪨 Muros",
+    "⬛ Sapatas",
+    "📐 Cálc. Esforços",
+    "📊 Resumo",
+    "🔗 V. Fundação",
+    "🧱 Paredes",
     "⚪ L. Fungiforme",
     "🪜 Escadas",
     "⚠️ Alertas",
@@ -2369,12 +2469,36 @@ with tab_pilares:
         use_container_width=True, hide_index=True,
     )
 
-# ── Lajes ─────────────────────────────────────────────────────────────────────
-with tab_lajes:
-    # Lajes manuais — adicionadas na barra lateral
-    if st.session_state.manual_slabs:
-        with st.expander(f"✅ {len(st.session_state.manual_slabs)} laje(s) adicionada(s) manualmente — ver lista"):
-            for _ms in st.session_state.manual_slabs:
+# ── Shared helpers for slab tabs ──────────────────────────────────────────────
+_pavinorte_names = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))]
+_other_names     = [n for n in sorted(CATALOG.keys()) if not n.startswith(("V3-","V5-","2V"))]
+_cat_options = ["(automático)"] + _pavinorte_names + _other_names if _CATALOG_OK else ["(automático)"]
+_lcfg = st.session_state.get("load_cfg", {})
+_zona_loads = {
+    "Habitável": (_lcfg.get("gk_piso", 6.15), _lcfg.get("qk_piso", 2.0)),
+    "Garagem":   (_lcfg.get("gk_gar",  4.80), _lcfg.get("qk_gar",  2.5)),
+    "Varanda":   (_lcfg.get("gk_var",  5.50), _lcfg.get("qk_var",  3.0)),
+    "Cobertura": (_lcfg.get("gk_cob",  5.50), _lcfg.get("qk_cob",  1.0)),
+}
+_stype_opts = {"Aligeirada (vigotas)": "ribbed", "Maciça 1 dir.": "one_way",
+               "Maciça 2 dir.": "two_way", "Consola": "cantilever"}
+_stype_rev = {v: k for k, v in _stype_opts.items()}
+_stype_map = {"one_way": "Vig.1D", "ribbed": "Alig.", "two_way": "Maç.2D", "cantilever": "Cons."}
+
+
+def _render_slab_tab(tab_slabs, tab_key_prefix, show_catalog=False):
+    """Render the shared per-slab editor + results table for a filtered list of slabs."""
+    from core.model import SlabType
+    if not tab_slabs:
+        st.info("Sem lajes deste tipo. Adiciona na barra lateral (seleciona o tipo correto).")
+        return
+
+    # Lajes manuais filter
+    _manual_tab = [ms for ms in st.session_state.manual_slabs
+                   if ms.id in {s.id for s in tab_slabs}]
+    if _manual_tab:
+        with st.expander(f"✅ {len(_manual_tab)} laje(s) adicionada(s) manualmente — ver lista"):
+            for _ms in _manual_tab:
                 _bids = ", ".join(_ms.support_beam_ids) if _ms.support_beam_ids else "(atribuir na tab Pórticos)"
                 st.caption(f"**{_ms.id}** | {getattr(_ms,'level','piso')} | vão {_ms.span_m}m | "
                            f"h={int(_ms.thickness_cm)}cm | gk={_ms.gk_kn_m2:.1f} qk={_ms.qk_kn_m2:.1f} | apoios: {_bids}")
@@ -2382,15 +2506,15 @@ with tab_lajes:
         st.caption("Adiciona lajes na **barra lateral** (secção ⬜ Lajes) e clica **▶ Correr cálculo**.")
     st.divider()
 
-    # Presdouro catalog selector
-    if _CATALOG_OK:
+    # Catalog browser (only for ribbed/aligeiradas)
+    if show_catalog and _CATALOG_OK:
         with st.expander(f"📖 Catálogo ({len(CATALOG)} lajes — PAVINORTE + Presdouro)"):
             st.caption("Seleciona a laje para cada painel ou deixa o programa escolher automaticamente.")
             cc1, cc2, cc3 = st.columns(3)
-            cat_span = cc1.number_input("Vão (m)", value=4.0, min_value=1.0, step=0.5, key="cat_span")
-            cat_gk   = cc2.number_input("gk (kN/m²)", value=5.5, min_value=0.0, step=0.5, key="cat_gk")
-            cat_qk   = cc3.number_input("qk (kN/m²)", value=2.0, min_value=0.0, step=0.5, key="cat_qk")
-            if st.button("🔍 Encontrar laje mínima"):
+            cat_span = cc1.number_input("Vão (m)", value=4.0, min_value=1.0, step=0.5, key=f"{tab_key_prefix}_cat_span")
+            cat_gk   = cc2.number_input("gk (kN/m²)", value=5.5, min_value=0.0, step=0.5, key=f"{tab_key_prefix}_cat_gk")
+            cat_qk   = cc3.number_input("qk (kN/m²)", value=2.0, min_value=0.0, step=0.5, key=f"{tab_key_prefix}_cat_qk")
+            if st.button("🔍 Encontrar laje mínima", key=f"{tab_key_prefix}_find_btn"):
                 from analysis.combinations import CombinationEngine
                 _comb = CombinationEngine()
                 _qd  = _comb.uls_fundamental(cat_gk, cat_qk)
@@ -2408,48 +2532,32 @@ with tab_lajes:
                     st.warning("Nenhuma laje do catálogo satisfaz estes requisitos.")
         st.divider()
 
-    # Per-slab editor: level, load zone and catalog assignment
-    _pavinorte_names = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))]
-    _other_names     = [n for n in sorted(CATALOG.keys()) if not n.startswith(("V3-","V5-","2V"))]
-    _cat_options = ["(automático)"] + _pavinorte_names + _other_names if _CATALOG_OK else ["(automático)"]
-    _lcfg = st.session_state.get("load_cfg", {})
-    _zona_loads = {
-        "Habitável": (_lcfg.get("gk_piso", 6.15), _lcfg.get("qk_piso", 2.0)),
-        "Garagem":   (_lcfg.get("gk_gar",  4.80), _lcfg.get("qk_gar",  2.5)),
-        "Varanda":   (_lcfg.get("gk_var",  5.50), _lcfg.get("qk_var",  3.0)),
-        "Cobertura": (_lcfg.get("gk_cob",  5.50), _lcfg.get("qk_cob",  1.0)),
-    }
-    _stype_opts = {"Aligeirada (vigotas)": "ribbed", "Maciça 1 dir.": "one_way",
-                   "Maciça 2 dir.": "two_way", "Consola": "cantilever"}
-    _stype_rev = {v: k for k, v in _stype_opts.items()}
+    # Per-slab editor
     with st.expander("✏️ Editar tipo, nível, zona de carga e catálogo por laje"):
         st.caption("Zona de carga: Habitável = piso normal, Garagem = LP7; LM = Laje Maciça.")
-        for _si, _sl in enumerate(p.slabs):
+        for _si, _sl in enumerate(tab_slabs):
             _lc0, _lc1, _lc2, _lc3, _lc4 = st.columns([1, 1, 1, 2, 1])
             _lc0.markdown(f"**{_sl.id}**")
-            # Slab type
-            from core.model import SlabType
             _cur_st_val = _sl.slab_type.value if hasattr(_sl.slab_type, 'value') else str(_sl.slab_type)
             _cur_st_label = _stype_rev.get(_cur_st_val, "Aligeirada (vigotas)")
             _new_st_label = _lc0.selectbox(
                 f"{_sl.id} — tipo", options=list(_stype_opts.keys()),
                 index=list(_stype_opts.keys()).index(_cur_st_label) if _cur_st_label in _stype_opts else 0,
-                key=f"slab_type_{_sl.id}", label_visibility="collapsed",
+                key=f"{tab_key_prefix}_slab_type_{_sl.id}", label_visibility="collapsed",
             )
             _new_st_val = _stype_opts[_new_st_label]
             if _new_st_val != _cur_st_val:
                 _sl.slab_type = SlabType(_new_st_val)
                 if _new_st_val in ("two_way", "cantilever"):
-                    _sl.catalog_id = None  # maciças don't use PAVINORTE catalog
+                    _sl.catalog_id = None
 
             _cur_lv = getattr(_sl, 'level', 'piso')
             _new_lv = _lc1.selectbox(
                 f"{_sl.id} — nível", options=["piso", "cobertura"],
                 index=0 if _cur_lv == 'piso' else 1,
-                key=f"slab_level_{_sl.id}",
+                key=f"{tab_key_prefix}_slab_level_{_sl.id}",
             )
-            # Infer current zona from gk/qk
-            _cur_zona_key = "slab_zona_" + _sl.id
+            _cur_zona_key = f"{tab_key_prefix}_slab_zona_{_sl.id}"
             if _cur_zona_key not in st.session_state:
                 _gk_now, _qk_now = _sl.gk_kn_m2, _sl.qk_kn_m2
                 _best_zona = "Habitável"
@@ -2470,20 +2578,19 @@ with tab_lajes:
             _cat_idx = _cat_options.index(_cur_cat) if _cur_cat in _cat_options else 0
             _new_cat = _lc3.selectbox(
                 f"{_sl.id} — catálogo", options=_cat_options,
-                index=_cat_idx, key=f"slab_cat_{_sl.id}",
+                index=_cat_idx, key=f"{tab_key_prefix}_slab_cat_{_sl.id}",
             )
             _lc4.caption(f"gk={_sl.gk_kn_m2:.2f}\nqk={_sl.qk_kn_m2:.2f}")
             if _new_lv != _cur_lv:
                 _sl.level = _new_lv
             _sl.catalog_id = None if _new_cat == "(automático)" else _new_cat
-            # Apply zone loads
             _zg, _zq = _zona_loads[_new_zona]
             _sl.gk_kn_m2 = _zg
             _sl.qk_kn_m2 = _zq
 
-    _stype_map = {"one_way": "Vig.1D", "ribbed": "Alig.", "two_way": "Maç.2D", "cantilever": "Cons."}
+    # Results dataframe
     rows = []
-    for s in p.slabs:
+    for s in tab_slabs:
         r = s.result
         sv = s.slab_type.value if s.slab_type else "one_way"
         h_str = (f"{int(s.thickness_cm-5)}+5" if sv in ("ribbed","one_way") and s.thickness_cm > 5
@@ -2506,6 +2613,22 @@ with tab_lajes:
         style_df(df_slabs, ["U. Flecha", "U. Fissura"]),
         use_container_width=True, hide_index=True,
     )
+
+
+# ── Lajes Aligeiradas ─────────────────────────────────────────────────────────
+with tab_lajes_alig:
+    _alig_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) == "ribbed"]
+    _render_slab_tab(_alig_slabs, "alig", show_catalog=True)
+
+# ── Lajes Maciças ─────────────────────────────────────────────────────────────
+with tab_lajes_mac:
+    _mac_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) in ("one_way", "cantilever")]
+    _render_slab_tab(_mac_slabs, "mac", show_catalog=False)
+
+# ── Lajes Armada em Cruz ──────────────────────────────────────────────────────
+with tab_lajes_cruz:
+    _cruz_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) == "two_way"]
+    _render_slab_tab(_cruz_slabs, "cruz", show_catalog=False)
 
 # ── Sapatas ───────────────────────────────────────────────────────────────────
 with tab_sapatas:
@@ -2580,6 +2703,82 @@ with tab_sapatas:
         style_df(df_ftg, ["U. Solo", "U. Punç."]),
         use_container_width=True, hide_index=True,
     )
+
+# ── Cálculo de Esforços ───────────────────────────────────────────────────────
+with tab_esforcos:
+    st.subheader("Módulo de Flexão Composta (EC2)")
+    st.caption("Verificação de pilares em flexão composta — NEd + MEd → secção mínima de armadura")
+    _ef1, _ef2 = st.columns(2)
+    _ned_ef  = _ef1.number_input("NEd (kN)", value=500.0, min_value=0.0, step=10.0, help="Força axial de cálculo")
+    _medy_ef = _ef1.number_input("MEd,y (kNm)", value=80.0, min_value=0.0, step=5.0)
+    _medz_ef = _ef2.number_input("MEd,z (kNm)", value=30.0, min_value=0.0, step=5.0)
+    _b_ef    = _ef2.number_input("b (cm)", value=30, min_value=15, step=5)
+    _h_ef    = _ef2.number_input("h (cm)", value=30, min_value=15, step=5)
+    _fck_ef_opts = {"C16/20": 16, "C20/25": 20, "C25/30": 25, "C30/37": 30, "C35/45": 35, "C40/50": 40}
+    _fyk_ef_opts = {"A400NR": 400, "A500NR": 500}
+    _ef3, _ef4 = st.columns(2)
+    _fck_ef_lbl = _ef3.selectbox("Betão", list(_fck_ef_opts.keys()), index=2, key="ef_fck")
+    _fyk_ef_lbl = _ef4.selectbox("Aço",   list(_fyk_ef_opts.keys()), index=1, key="ef_fyk")
+    _fck_ef = _fck_ef_opts[_fck_ef_lbl]
+    _fyk_ef = _fyk_ef_opts[_fyk_ef_lbl]
+
+    if st.button("▶ Calcular secção", key="btn_calc_esforcos", type="primary"):
+        import math as _math
+        # EC2 simplified: fcd = fck/1.5, fyd = fyk/1.15
+        _fcd = _fck_ef / 1.5
+        _fyd = _fyk_ef / 1.15
+        _b_m = _b_ef / 100.0
+        _h_m = _h_ef / 100.0
+        _Ac  = _b_m * _h_m
+        _d   = _h_m - 0.04  # effective depth (cover 4cm)
+        # Concrete resistance to axial (simplified)
+        _Nrd_conc = 0.8 * _fcd * _Ac * 1000  # kN
+        # Required As (simplified interaction)
+        _ned_kN = _ned_ef
+        _med_tot = _math.sqrt(_medy_ef**2 + _medz_ef**2)  # resultant moment
+        # nu = NEd / (fcd * Ac) — normalized axial
+        _nu = _ned_kN / (_fcd * _Ac * 1000)
+        # mu = MEd / (fcd * Ac * h)
+        _mu = _med_tot / (_fcd * _Ac * _h_m * 1000)
+        # Mechanical reinforcement ratio ω from EC2 interaction diagram (simplified)
+        _omega = max(0.0, _mu + _nu - 0.4)
+        _As_req_cm2 = (_omega * _fcd * _Ac * 10000) / (_fyd / 10)  # cm²
+        _As_min_cm2 = max(0.002 * _Ac * 10000, 4 * 1.131)  # EC2 §9.5.2
+
+        _r1, _r2, _r3, _r4 = st.columns(4)
+        _r1.metric("fcd (MPa)", f"{_fcd:.1f}")
+        _r2.metric("fyd (MPa)", f"{_fyd:.0f}")
+        _r3.metric("ν (axial norm.)", f"{_nu:.3f}")
+        _r4.metric("μ (momento norm.)", f"{_mu:.3f}")
+        st.divider()
+        _r5, _r6, _r7 = st.columns(3)
+        _r5.metric("As,req (cm²)", f"{max(_As_req_cm2, _As_min_cm2):.1f}")
+        _r6.metric("As,min EC2 (cm²)", f"{_As_min_cm2:.1f}")
+        _nrd_pil = (_fcd * _Ac + max(_As_req_cm2, _As_min_cm2) / 10000 * _fyd) * 1000
+        _r7.metric("NRd estimado (kN)", f"{_nrd_pil:.0f}")
+
+        if _nu > 1.0:
+            st.error("⚠️ ν > 1.0 — secção de betão insuficiente para a carga axial. Aumenta b ou h.")
+        elif _As_req_cm2 > _As_min_cm2:
+            st.warning(f"As,req = {_As_req_cm2:.1f} cm² governa (acima do mínimo).")
+        else:
+            st.success(f"Mínimo EC2 governa: As,min = {_As_min_cm2:.1f} cm²")
+
+    st.divider()
+    st.subheader("Momentos de 2ª Ordem (excentricidades)")
+    st.caption("EC2 §5.8 — Método simplificado de excentricidades (e_0 + e_i + e_2)")
+    _excc1, _excc2, _excc3 = st.columns(3)
+    _e0y = _excc1.number_input("e₀,y (m)", value=0.10, min_value=0.0, step=0.01, format="%.3f",
+                                help="M_Ed,y / N_Ed — excentricidade de 1ª ordem")
+    _e0z = _excc2.number_input("e₀,z (m)", value=0.05, min_value=0.0, step=0.01, format="%.3f")
+    _l0  = _excc3.number_input("l₀ (m)", value=3.0, min_value=0.5, step=0.25,
+                                help="Comprimento de encurvadura efectivo")
+    _ei  = max(0.02, _l0 / 400)  # EC2 §5.2(7) imperfection
+    st.info(f"Excentricidade de imperfeição: eᵢ = l₀/400 = {_ei*100:.1f} cm  (EC2 §5.2)")
+
+    st.divider()
+    st.subheader("Cálculo Sísmico")
+    st.info("Em desenvolvimento — disponível na próxima versão do RAPTOR.")
 
 # ── Paredes estruturais ───────────────────────────────────────────────────────
 with tab_paredes:
