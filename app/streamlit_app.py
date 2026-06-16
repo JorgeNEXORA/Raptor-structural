@@ -2032,7 +2032,7 @@ with tab_pilares:
 _pavinorte_names = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))]
 _other_names     = [n for n in sorted(CATALOG.keys()) if not n.startswith(("V3-","V5-","2V"))]
 _cat_options = ["(automático)"] + _pavinorte_names + _other_names if _CATALOG_OK else ["(automático)"]
-_lcfg = st.session_state.get("load_cfg", {})
+_lcfg = st.session_state.get("load_cfg") or {}
 _zona_loads = {
     "Habitável": (_lcfg.get("gk_piso", 6.15), _lcfg.get("qk_piso", 2.0)),
     "Garagem":   (_lcfg.get("gk_gar",  4.80), _lcfg.get("qk_gar",  2.5)),
