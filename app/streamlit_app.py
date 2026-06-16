@@ -50,7 +50,7 @@ from analysis.history import store_snapshot
 
 # ─── Page config ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Raptor",
+    page_title="Raptor v2.1",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
