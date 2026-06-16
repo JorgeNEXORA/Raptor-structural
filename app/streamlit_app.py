@@ -2010,6 +2010,40 @@ if "predim_results" in st.session_state and st.session_state["predim_results"]:
     st.divider()
 
 if st.session_state.project is None:
+    _pi_now = st.session_state.get("project_info") or {}
+    _req_now = _pi_now.get("requerente") or "Novo projeto"
+    st.markdown(f"""
+    <div style="text-align:center;padding:60px 20px 20px 20px">
+      <div style="color:#c9a84c;font-size:1.6rem;font-weight:700;letter-spacing:.12em;margin-bottom:6px">
+        {_req_now.upper()}
+      </div>
+      <div style="color:#444;font-size:0.85rem;letter-spacing:.06em;margin-bottom:32px">
+        {_pi_now.get('tipo_obra','') or 'Projeto Estrutural'} · {_pi_now.get('morada_obra','') or '—'}
+      </div>
+      <div style="color:#2a2a2a;font-size:0.8rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:20px">
+        Como começar
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+    _hw1, _hw2, _hw3 = st.columns(3)
+    with _hw1:
+        st.markdown("""<div style="background:#0c1018;border:1px solid #1e2836;border-radius:6px;padding:18px;text-align:center;height:120px">
+          <div style="font-size:1.6rem">🏛️</div>
+          <div style="color:#c9a84c;font-size:0.75rem;letter-spacing:.06em;margin:6px 0 4px">1. PILARES</div>
+          <div style="color:#555;font-size:0.7rem">Define nº de pilares<br>na barra lateral</div>
+        </div>""", unsafe_allow_html=True)
+    with _hw2:
+        st.markdown("""<div style="background:#0c1018;border:1px solid #1e2836;border-radius:6px;padding:18px;text-align:center;height:120px">
+          <div style="font-size:1.6rem">🏗️</div>
+          <div style="color:#c9a84c;font-size:0.75rem;letter-spacing:.06em;margin:6px 0 4px">2. PÓRTICOS / LAJES</div>
+          <div style="color:#555;font-size:0.7rem">Configura os pórticos<br>e adiciona lajes</div>
+        </div>""", unsafe_allow_html=True)
+    with _hw3:
+        st.markdown("""<div style="background:#0c1018;border:1px solid #1e2836;border-radius:6px;padding:18px;text-align:center;height:120px">
+          <div style="font-size:1.6rem">▶️</div>
+          <div style="color:#c9a84c;font-size:0.75rem;letter-spacing:.06em;margin:6px 0 4px">3. CALCULAR</div>
+          <div style="color:#555;font-size:0.7rem">Clica o botão<br>na barra lateral ↙</div>
+        </div>""", unsafe_allow_html=True)
     st.stop()
 
 p: Project = st.session_state.project
