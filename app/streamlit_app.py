@@ -710,7 +710,7 @@ with _mh_new:
         st.session_state.project_info = None
         st.rerun()
 with _mh_open:
-    st.button("Open", use_container_width=True, disabled=True, help="Usa 'Abrir projeto' na sidebar")
+    st.button("Open", use_container_width=True, disabled=True, help="Usa '📂 Abrir projeto / inputs' na sidebar")
 with _mh_save:
     st.download_button("Save", data=_sav_bytes,
         file_name=f"{_requ_hdr.replace(' ','_')}.raptor",
@@ -902,63 +902,20 @@ with st.sidebar:
                     "tipo_obra":   _dt_tipo,
                 }
                 st.rerun()
+    # ── Abrir projeto / inputs guardado ─────────────────────────────────────
     st.divider()
-
-    # ── Guardar / Abrir projecto ──────────────────────────────────────────────
-    from core.persistence import save_inputs as _save_inp, load_inputs as _load_inp
-    _proj_now = st.session_state.get("project")
-
-    # Guardar inputs (sempre visível — não precisa de cálculo)
-    _inp_keys = ["manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
-                 "manual_stairs", "col_config", "cols_in_cont_footing",
-                 "portico_slab_map", "portico_tramos", "beam_overrides", "project_info"]
-    _inp_snap = {k: st.session_state.get(k) for k in _inp_keys}
-    _inp_bytes = _save_inp(_inp_snap)
-    st.download_button(
-        "💾  Guardar inputs",
-        data=_inp_bytes,
-        file_name="inputs.raptor",
-        mime="application/json",
-        use_container_width=True,
-        help="Guarda lajes, muros, pilares e pórticos introduzidos, mesmo sem correr o cálculo.",
-    )
-
-    # Guardar projeto completo (com resultados) — só depois de calcular
-    if _proj_now:
-        st.success(f"**{_proj_now.name}**", icon="📂")
-        from core.persistence import save_project as _save_proj
-        _ss_to_save = {
-            "col_config":           st.session_state.get("col_config"),
-            "cols_in_cont_footing": st.session_state.get("cols_in_cont_footing", []),
-            "portico_slab_map":     st.session_state.get("portico_slab_map", {}),
-            "portico_tramos":       st.session_state.get("portico_tramos", []),
-            "wall_slab_map":        st.session_state.get("wall_slab_map", {}),
-            "beam_overrides":       st.session_state.get("beam_overrides", {}),
-        }
-        _proj_bytes = _save_proj(_proj_now, session_state=_ss_to_save)
-        _safe_name  = _proj_now.name.replace(" ", "_").replace("/", "-")
-        st.download_button(
-            "💾  Guardar projeto + resultados (.raptor)",
-            data=_proj_bytes,
-            file_name=f"{_safe_name}.raptor",
-            mime="application/json",
-            use_container_width=True,
-            help="Guarda geometria, resultados e armaduras calculadas.",
-        )
-
-    with st.expander("Abrir projeto / inputs guardado"):
+    from core.persistence import load_inputs as _load_inp
+    with st.expander("📂 Abrir projeto / inputs"):
         st.caption("Carrega um ficheiro .raptor (inputs ou projeto completo).")
         raptor_upload = st.file_uploader("Ficheiro .raptor", type=["raptor", "json"],
                                          key="raptor_upload", label_visibility="collapsed")
         if raptor_upload is not None:
-            # Guard: só processa quando é um ficheiro novo (evita loop infinito de reruns)
             _up_uid = f"{raptor_upload.name}_{raptor_upload.size}"
             if st.session_state.get("_raptor_loaded_id") != _up_uid:
                 try:
                     _raw_bytes = raptor_upload.read()
                     _raw_json  = __import__("json").loads(_raw_bytes.decode("utf-8"))
                     if _raw_json.get("raptor_version", "").startswith("inputs_"):
-                        # Inputs snapshot
                         _inp_loaded = _load_inp(_raw_bytes)
                         for _ik, _iv in _inp_loaded.items():
                             st.session_state[_ik] = _iv
@@ -966,34 +923,25 @@ with st.sidebar:
                         st.success("Inputs restaurados com sucesso.")
                         st.rerun()
                     else:
-                        # Full project
                         from core.persistence import load_project as _load_proj
                         _loaded = _load_proj(_raw_bytes)
                         st.session_state.project = _loaded
                         st.session_state.drawings_ready = False
-                        # Restaurar session state manuais
                         st.session_state.manual_retaining_walls = list(_loaded.retaining_walls or [])
                         st.session_state.manual_slabs = [s for s in (_loaded.slabs or [])
                                                          if not getattr(s, 'polygon_points', None)]
                         st.session_state.manual_flat_slabs = list(getattr(_loaded, 'flat_slabs', []) or [])
                         st.session_state.manual_stairs    = list(getattr(_loaded, 'stairs', []) or [])
                         st.session_state.manual_walls     = list(getattr(_loaded, 'walls', []) or [])
-                        # Restaurar session_state guardado (col_config, pórticos)
                         _ss_saved = _raw_json.get("session_state", {})
                         if _ss_saved.get("col_config"):
                             st.session_state.col_config = _ss_saved["col_config"]
                         if _ss_saved.get("cols_in_cont_footing"):
                             st.session_state.cols_in_cont_footing = _ss_saved["cols_in_cont_footing"]
-                        if _ss_saved.get("portico_slab_map"):
-                            st.session_state.portico_slab_map = _ss_saved["portico_slab_map"]
-                        else:
-                            st.session_state.portico_slab_map = {}
-                        if _ss_saved.get("portico_tramos"):
-                            st.session_state.portico_tramos = _ss_saved["portico_tramos"]
-                        else:
-                            st.session_state.portico_tramos = []
-                        st.session_state.wall_slab_map   = _ss_saved.get("wall_slab_map", {})
-                        st.session_state.beam_overrides  = _ss_saved.get("beam_overrides", {})
+                        st.session_state.portico_slab_map = _ss_saved.get("portico_slab_map", {})
+                        st.session_state.portico_tramos   = _ss_saved.get("portico_tramos", [])
+                        st.session_state.wall_slab_map    = _ss_saved.get("wall_slab_map", {})
+                        st.session_state.beam_overrides   = _ss_saved.get("beam_overrides", {})
                         st.session_state["_raptor_loaded_id"] = _up_uid
                         _n_rw = len(st.session_state.manual_retaining_walls)
                         _n_sl = len(st.session_state.manual_slabs)
@@ -1007,766 +955,32 @@ with st.sidebar:
                     _n_rw = len(st.session_state.get("manual_retaining_walls", []))
                     _n_sl = len(st.session_state.get("manual_slabs", []))
                     st.success(f"'{_proj_loaded.name}' — {_n_rw} muros, {_n_sl} lajes")
-    st.divider()
 
-    mode = "CSV"
-    dxf_upload = col_csv = beam_csv = slab_csv = slab_loads_csv = None
 
-    # Preenche campos do projeto a partir dos Dados do Trabalho
-    _pi = st.session_state.get("project_info") or {}
-    project_name = "Projeto Estrutural"
-    location = _pi.get("morada_obra") or "—"
-    owner = _pi.get("requerente") or ""
-    building_type = _pi.get("tipo_obra") or "Habitação"
-    soil_mpa = st.number_input(
-        "Tensão admissível solo (MPa)",
-        value=0.20, min_value=0.05, max_value=2.0, step=0.05, format="%.2f",
-    )
-    _fck_options = {"C16/20": 16, "C20/25": 20, "C25/30": 25,
-                    "C30/37": 30, "C35/45": 35, "C40/50": 40}
-    _fyk_options = {"A400NR": 400, "A500NR": 500, "A600NR": 600}
-    fck_label = st.selectbox("Betão", list(_fck_options.keys()), index=2)
-    fyk_label = st.selectbox("Aço", list(_fyk_options.keys()), index=1)
-    fck_mpa = _fck_options[fck_label]
-    fyk_mpa = _fyk_options[fyk_label]
-
-    st.divider()
-    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:4px 0 2px 0;text-transform:uppercase'>Elementos Avançados</p>", unsafe_allow_html=True)
-
-    # ── Shear walls ──────────────────────────────────────────────────────────
-    with st.expander(f"Paredes estruturais ({len(st.session_state.manual_walls)})"):
-        _pw = st.session_state.get("_prefill_wall", {})
-        with st.form("form_wall", clear_on_submit=True):
-            wc1, wc2 = st.columns(2)
-            w_id  = wc1.text_input("ID", value=_pw.get("id", "W1"))
-            w_len = wc1.number_input("Comprimento (m)", value=float(_pw.get("length_m", 3.0)), min_value=0.5, step=0.5)
-            w_thk = wc1.number_input("Espessura (cm)", value=int(_pw.get("thickness_cm", 20)), min_value=10, step=5)
-            w_h   = wc1.number_input("Altura (m)", value=float(_pw.get("height_m", 3.0)), min_value=1.0, step=0.5)
-            w_ned = wc2.number_input("NEd (kN)", value=float(_pw.get("ned_kn", 500.0)), min_value=0.0, step=50.0)
-            w_ved = wc2.number_input("VEd horizontal (kN)", value=float(_pw.get("ved_kn", 50.0)), min_value=0.0, step=10.0)
-            w_med = wc2.number_input("MEd base (kNm)", value=float(_pw.get("med_knm", 150.0)), min_value=0.0, step=10.0)
-            _w_lbl = "✅ Atualizar parede" if _pw else "➕ Adicionar parede"
-            if st.form_submit_button(_w_lbl):
-                st.session_state.manual_walls.append(
-                    ShearWall(w_id, 0.0, 0.0, w_len, w_thk, w_h, w_ned, w_ved, w_med))
-                st.session_state.pop("_prefill_wall", None)
-                st.rerun()
-        if st.session_state.manual_walls:
-            for _i, ww in enumerate(st.session_state.manual_walls):
-                _ca, _cb, _cc = st.columns([5, 1, 1])
-                _ca.caption(f"{ww.id}: L={ww.length_m}m  e={ww.thickness_cm}cm  N={ww.ned_kn}kN")
-                if _cb.button("✏️", key=f"edit_wall_{_i}", help="Editar"):
-                    st.session_state["_prefill_wall"] = {"id": ww.id, "length_m": ww.length_m,
-                        "thickness_cm": ww.thickness_cm, "height_m": ww.height_m,
-                        "ned_kn": ww.ned_kn, "ved_kn": ww.ved_kn, "med_knm": ww.med_knm}
-                    st.session_state.manual_walls.pop(_i)
-                    st.rerun()
-                if _cc.button("🗑", key=f"del_wall_{_i}", help="Apagar"):
-                    st.session_state.manual_walls.pop(_i)
-                    st.rerun()
-
-    # ── Flat slabs ───────────────────────────────────────────────────────────
-    with st.expander(f"Lajes fungiformes ({len(st.session_state.manual_flat_slabs)})"):
-        _pfs = st.session_state.get("_prefill_fs", {})
-        _fs_panel_opts = ["interior", "edge", "corner"]
-        with st.form("form_fs", clear_on_submit=True):
-            fc1, fc2 = st.columns(2)
-            fs_id   = fc1.text_input("ID", value=_pfs.get("id", "LF1"))
-            fs_lx   = fc1.number_input("Lx — vão curto (m)", value=float(_pfs.get("lx_m", 5.0)), min_value=1.0, step=0.5)
-            fs_ly   = fc1.number_input("Ly — vão longo (m)", value=float(_pfs.get("ly_m", 6.0)), min_value=1.0, step=0.5)
-            fs_thk  = fc1.number_input("Espessura (cm)", value=int(_pfs.get("thickness_cm", 22)), min_value=12, step=2)
-            fs_gk   = fc2.number_input("gk (kN/m²)", value=float(_pfs.get("gk_kn_m2", 5.0)), min_value=0.0, step=0.5)
-            fs_qk   = fc2.number_input("qk (kN/m²)", value=float(_pfs.get("qk_kn_m2", 3.0)), min_value=0.0, step=0.5)
-            fs_cw   = fc2.number_input("Lado pilar (cm)", value=int(_pfs.get("col_width_cm", 30)), min_value=15, step=5)
-            _fs_pt_idx = _fs_panel_opts.index(_pfs.get("panel_type", "interior")) if _pfs.get("panel_type") in _fs_panel_opts else 0
-            fs_type = fc2.selectbox("Tipo painel", _fs_panel_opts, index=_fs_pt_idx)
-            _fs_lbl = "✅ Atualizar" if _pfs else "➕ Adicionar laje fungiforme"
-            if st.form_submit_button(_fs_lbl):
-                d_cm = fs_thk - 3.0
-                st.session_state.manual_flat_slabs.append(
-                    FlatSlab(fs_id, fs_lx, fs_ly, fs_thk, d_cm, fs_gk, fs_qk, fs_cw, fs_type))
-                st.session_state.pop("_prefill_fs", None)
-                st.rerun()
-        if st.session_state.manual_flat_slabs:
-            for _i, fs in enumerate(st.session_state.manual_flat_slabs):
-                _ca, _cb, _cc = st.columns([5, 1, 1])
-                _ca.caption(f"{fs.id}: {fs.lx_m}×{fs.ly_m}m  h={fs.thickness_cm}cm  gk={fs.gk_kn_m2}")
-                if _cb.button("✏️", key=f"edit_fs_{_i}", help="Editar"):
-                    st.session_state["_prefill_fs"] = {"id": fs.id, "lx_m": fs.lx_m, "ly_m": fs.ly_m,
-                        "thickness_cm": fs.thickness_cm, "gk_kn_m2": fs.gk_kn_m2,
-                        "qk_kn_m2": fs.qk_kn_m2, "col_width_cm": fs.col_width_cm, "panel_type": fs.panel_type}
-                    st.session_state.manual_flat_slabs.pop(_i)
-                    st.rerun()
-                if _cc.button("🗑", key=f"del_fs_{_i}", help="Apagar"):
-                    st.session_state.manual_flat_slabs.pop(_i)
-                    st.rerun()
-
-    # ── Stairs ───────────────────────────────────────────────────────────────
-    with st.expander(f"Escadas ({len(st.session_state.manual_stairs)})"):
-        _pst = st.session_state.get("_prefill_stair", {})
-        with st.form("form_stair", clear_on_submit=True):
-            sc1, sc2 = st.columns(2)
-            st_id  = sc1.text_input("ID", value=_pst.get("id", "E1"))
-            st_lh  = sc1.number_input("Projecção horiz. (m)", value=float(_pst.get("span_h_m", 3.5)), min_value=0.5, step=0.25)
-            st_hv  = sc1.number_input("Altura total (m)", value=float(_pst.get("rise_m", 1.5)), min_value=0.2, step=0.1)
-            st_w   = sc1.number_input("Largura (m)", value=float(_pst.get("width_m", 1.2)), min_value=0.5, step=0.1)
-            st_thk = sc2.number_input("Espessura laje (cm)", value=int(_pst.get("thickness_cm", 14)), min_value=8, step=1)
-            st_gk  = sc2.number_input("gk acabamentos (kN/m²)", value=float(_pst.get("gk_kn_m2", 1.5)), min_value=0.0, step=0.5)
-            st_qk  = sc2.number_input("qk (kN/m²)", value=float(_pst.get("qk_kn_m2", 3.0)), min_value=0.0, step=0.5)
-            _st_lbl = "✅ Atualizar" if _pst else "➕ Adicionar escada"
-            if st.form_submit_button(_st_lbl):
-                d_cm = st_thk - 2.0
-                st.session_state.manual_stairs.append(
-                    StairSlab(st_id, st_lh, st_hv, st_w, st_thk, d_cm, st_gk, st_qk))
-                st.session_state.pop("_prefill_stair", None)
-                st.rerun()
-        if st.session_state.manual_stairs:
-            for _i, ss in enumerate(st.session_state.manual_stairs):
-                _ca, _cb, _cc = st.columns([5, 1, 1])
-                _ca.caption(f"{ss.id}: Lh={ss.span_h_m}m  Hv={ss.rise_m}m  h={ss.thickness_cm}cm")
-                if _cb.button("✏️", key=f"edit_stair_{_i}", help="Editar"):
-                    st.session_state["_prefill_stair"] = {"id": ss.id, "span_h_m": ss.span_h_m,
-                        "rise_m": ss.rise_m, "width_m": ss.width_m, "thickness_cm": ss.thickness_cm,
-                        "gk_kn_m2": ss.gk_kn_m2, "qk_kn_m2": ss.qk_kn_m2}
-                    st.session_state.manual_stairs.pop(_i)
-                    st.rerun()
-                if _cc.button("🗑", key=f"del_stair_{_i}", help="Apagar"):
-                    st.session_state.manual_stairs.pop(_i)
-                    st.rerun()
-
-    # ── Muros de betão de suporte ────────────────────────────────────────────
-    with st.expander(f"Muros de betão ({len(st.session_state.manual_retaining_walls)})"):
-        _prw = st.session_state.get("_prefill_rw", {})
-        _rw_tipo_opts = ["Suporte de terras", "Piscina"]
-        _rw_lado_opts = ["Direito", "Esquerdo"]
-        _rw_tipo_idx  = 1 if _prw.get("wall_type") == "piscina" else 0
-        _rw_lado_idx  = 1 if _prw.get("load_side", "direito") == "esquerdo" else 0
-        with st.form("form_rw", clear_on_submit=True):
-            rw1, rw2 = st.columns(2)
-            rw_id   = rw1.text_input("ID", value=_prw.get("id", "M1"))
-            rw_h    = rw1.number_input("Altura do muro (m)", value=float(_prw.get("height_m", 2.5)),
-                                        min_value=0.5, step=0.25, help="Altura do fuste, sem contar com a sapata")
-            rw_st   = rw1.number_input("Espessura do fuste (cm)", value=int(_prw.get("stem_thickness_cm", 25)), min_value=15, step=5)
-            rw_tipo = rw1.selectbox("Tipo", _rw_tipo_opts, index=_rw_tipo_idx)
-            rw_lado = rw2.selectbox("Lado das terras/água", _rw_lado_opts, index=_rw_lado_idx)
-            rw_gam  = rw2.number_input("γ solo (kN/m³)", value=float(_prw.get("gamma_soil_kn_m3", 18.0)), min_value=14.0, step=1.0)
-            rw_phi  = rw2.number_input("φ (°)", value=int(_prw.get("phi_deg", 30)), min_value=15, max_value=45, step=1)
-            rw_q    = rw2.number_input("Sobrecarga (kN/m²)", value=float(_prw.get("surcharge_kn_m2", 5.0)), min_value=0.0, step=1.0)
-            _rw_lbl = "✅ Atualizar muro" if _prw else "➕ Adicionar muro"
-            if st.form_submit_button(_rw_lbl):
-                _rw_H  = rw_h
-                _rw_st_m = rw_st / 100.0
-                _rw_bw   = round(0.60 * _rw_H, 2)
-                _rw_ht   = float(max(25, round(0.10 * _rw_H * 100 / 5) * 5))
-                _rw_heel = round(0.40 * _rw_H, 2)
-                _rw_toe  = max(0.10, round(_rw_bw - _rw_heel - _rw_st_m, 2))
-                st.session_state.manual_retaining_walls.append(
-                    RetainingWall(rw_id, _rw_H, rw_st, _rw_bw, _rw_ht, _rw_heel, _rw_toe,
-                                  rw_gam, float(rw_phi), rw_q,
-                                  "piscina" if rw_tipo == "Piscina" else "terras",
-                                  rw_lado.lower()))
-                st.session_state.pop("_prefill_rw", None)
-                st.rerun()
-        if st.session_state.manual_retaining_walls:
-            _rw_slab_opts = [s.id for s in st.session_state.manual_slabs]
-            _wsmap = st.session_state.get("wall_slab_map", {})
-            for _i, rw in enumerate(st.session_state.manual_retaining_walls):
-                _rw_tipo_lbl = "piscina" if getattr(rw, 'wall_type', 'terras') == 'piscina' else "terras"
-                _ca, _cb, _cc = st.columns([5, 1, 1])
-                _ca.caption(f"{rw.id}: H={rw.height_m}m  e={rw.stem_thickness_cm}cm  "
-                            f"B={rw.base_width_m:.2f}m  [{_rw_tipo_lbl}]")
-                if _cb.button("✏️", key=f"edit_rw_{_i}", help="Editar"):
-                    st.session_state["_prefill_rw"] = {"id": rw.id, "height_m": rw.height_m,
-                        "stem_thickness_cm": rw.stem_thickness_cm, "gamma_soil_kn_m3": rw.gamma_soil_kn_m3,
-                        "phi_deg": rw.phi_deg, "surcharge_kn_m2": rw.surcharge_kn_m2,
-                        "wall_type": getattr(rw, "wall_type", "terras"),
-                        "load_side": getattr(rw, "load_side", "direito")}
-                    st.session_state.manual_retaining_walls.pop(_i)
-                    st.rerun()
-                if _cc.button("🗑", key=f"del_rw_{_i}", help="Apagar"):
-                    st.session_state.manual_retaining_walls.pop(_i)
-                    st.rerun()
-                # Lajes que apoiam neste muro — separadas por lado
-                _ws_entry = _wsmap.get(rw.id, {})
-                # Backward compat: se era lista simples, migrar para dict
-                if isinstance(_ws_entry, list):
-                    _ws_entry = {"direito": _ws_entry, "esquerdo": []}
-                _ws_dir_cur = [s for s in _ws_entry.get("direito", []) if s in _rw_slab_opts]
-                _ws_esq_cur = [s for s in _ws_entry.get("esquerdo", []) if s in _rw_slab_opts]
-                _wsd, _wse  = st.columns(2)
-                _ws_dir_sel = _wsd.multiselect(
-                    f"Lajes lado dir. → {rw.id}",
-                    options=_rw_slab_opts,
-                    default=_ws_dir_cur,
-                    key=f"wsmap_dir_{rw.id}_{_i}",
-                    help="Lajes que apoiam no lado direito do muro",
-                )
-                _ws_esq_sel = _wse.multiselect(
-                    f"Lajes lado esq. → {rw.id}",
-                    options=_rw_slab_opts,
-                    default=_ws_esq_cur,
-                    key=f"wsmap_esq_{rw.id}_{_i}",
-                    help="Lajes que apoiam no lado esquerdo do muro",
-                )
-                _wsmap[rw.id] = {"direito": _ws_dir_sel, "esquerdo": _ws_esq_sel}
-            st.session_state.wall_slab_map = _wsmap
-
-    # ── Pilares ──────────────────────────────────────────────────────────────
-    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:8px 0 2px 0;text-transform:uppercase'>Geometria</p>", unsafe_allow_html=True)
-    _cc_cur = st.session_state.get("col_config") or {}
-    _n_def  = _cc_cur.get("n", 0)
-    with st.expander(f"Pilares ({_n_def} pilares)"):
-        st.caption("Define o número de pilares, pisos e alturas.")
-        _pc1, _pc2 = st.columns(2)
-        _n_pil = int(_pc1.number_input("Nº de pilares", value=_n_def, min_value=0, max_value=60, step=1, key="cc_n"))
-        _n_pis = int(_pc1.number_input("Nº de pisos", value=_cc_cur.get("n_pisos", 2), min_value=1, max_value=15, step=1, key="cc_npisos"))
-        _h_cav = float(_pc2.number_input("H sapata→piso 1 (m)", value=float(_cc_cur.get("h_cave", 2.80)), min_value=1.0, step=0.05, key="cc_hcave"))
-        _h_pis = float(_pc2.number_input("H entre pisos (m)", value=float(_cc_cur.get("h_piso", 2.80)), min_value=2.0, step=0.05, key="cc_hpiso"))
-        _b_col = int(_pc1.number_input("Secção b (cm)", value=_cc_cur.get("b", 30), min_value=20, max_value=120, step=5, key="cc_b"))
-        _h_col = int(_pc2.number_input("Secção h (cm)", value=_cc_cur.get("h", 30), min_value=20, max_value=120, step=5, key="cc_h"))
-
-        _all_pil_ids = [f"P{i}" for i in range(1, _n_pil + 1)]
-        _cur_cont = [_p for _p in st.session_state.get("cols_in_cont_footing", []) if _p in _all_pil_ids]
-        _pil_cont = st.multiselect(
-            "Pilares em sapata corrida (muro cave)",
-            options=_all_pil_ids,
-            default=_cur_cont,
-            help="Os restantes ficam em sapata isolada.",
-            key="cc_cont_pils",
-        )
-        _isol_pils = [_p for _p in _all_pil_ids if _p not in _pil_cont]
-        if _isol_pils:
-            st.caption(f"Isoladas ({len(_isol_pils)}): {', '.join(_isol_pils[:8])}{'…' if len(_isol_pils)>8 else ''}")
-        if _pil_cont:
-            st.caption(f"Sapata corrida ({len(_pil_cont)}): {', '.join(_pil_cont)}")
-
-        if st.button("✅ Aplicar configuração de pilares", key="btn_apply_col_config"):
-            st.session_state["col_config"] = {
-                "n": _n_pil, "n_pisos": _n_pis,
-                "h_cave": _h_cav, "h_piso": _h_pis,
-                "b": _b_col, "h": _h_col,
-            }
-            st.session_state["cols_in_cont_footing"] = list(_pil_cont)
-            st.rerun()
-
-        if _cc_cur:
-            _h_tot_info = _cc_cur.get("h_cave", 2.8) + max(0, _cc_cur.get("n_pisos", 2) - 1) * _cc_cur.get("h_piso", 2.8)
-            st.info(f"✅ {_cc_cur['n']} pilares | {_cc_cur['n_pisos']} pisos | "
-                    f"H≈{_h_tot_info:.2f}m | {_cc_cur['b']}×{_cc_cur['h']}cm")
-            if st.button("🗑 Limpar configuração de pilares", key="btn_clear_col_config"):
-                st.session_state["col_config"] = None
-                st.session_state["cols_in_cont_footing"] = []
-                st.rerun()
-
-    # ── Sapatas ───────────────────────────────────────────────────────────────
-    with st.expander("Sapatas — tipo por pilar"):
-        st.caption("Aqui podes ver e ajustar quais os pilares com sapata isolada vs sapata corrida do muro da cave. "
-                   "Define primeiro os Pilares acima.")
-        _cc2 = st.session_state.get("col_config")
-        _cont2 = st.session_state.get("cols_in_cont_footing", [])
-        if _cc2:
-            _all2 = [f"P{i}" for i in range(1, _cc2["n"] + 1)]
-            _new_cont2 = st.multiselect(
-                "Pilares em sapata corrida do muro cave",
-                options=_all2,
-                default=[_p for _p in _cont2 if _p in _all2],
-                key="sapatas_cont_pils",
-            )
-            if _new_cont2 != _cont2:
-                st.session_state["cols_in_cont_footing"] = list(_new_cont2)
-                st.rerun()
-            _isol2 = [_p for _p in _all2 if _p not in _new_cont2]
-            st.caption(f"**Sapatas isoladas ({len(_isol2)}):** {', '.join(_isol2)}")
-            if _new_cont2:
-                st.caption(f"**Sapata corrida ({len(_new_cont2)}):** {', '.join(_new_cont2)}")
-        else:
-            st.info("Define o número de pilares na secção 🏛️ Pilares.")
-
-    # ── Lajes ────────────────────────────────────────────────────────────────
-    _pavinorte_sb = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
-    _other_sb     = [n for n in sorted(CATALOG.keys()) if not n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
-    _cat_sb_opts  = ["(automático)"] + _pavinorte_sb + _other_sb
-    _lcfg_sb      = st.session_state.get("load_cfg") or {}
-    _zona_map_sb  = {
-        "Habitável": (_lcfg_sb.get("gk_piso", 6.15), _lcfg_sb.get("qk_piso", 2.0)),
-        "Garagem":   (_lcfg_sb.get("gk_gar",  4.80), _lcfg_sb.get("qk_gar",  2.5)),
-        "Varanda":   (_lcfg_sb.get("gk_var",  5.50), _lcfg_sb.get("qk_var",  3.0)),
-        "Cobertura": (_lcfg_sb.get("gk_cob",  5.50), _lcfg_sb.get("qk_cob",  1.0)),
-    }
-    _sl_type_opts = ["Aligeirada", "Maciça 1D", "Maciça 2D", "Consola"]
-    _sl_lvl_opts  = ["piso", "cobertura"]
-    _sl_dir_opts  = ["X", "Y"]
-    _sl_zona_opts = list(_zona_map_sb.keys())
-    with st.expander(f"Lajes ({len(st.session_state.manual_slabs)})"):
-        _pslab = st.session_state.get("_prefill_slab", {})
-        _sl_type_idx  = _sl_type_opts.index(_pslab["slab_type_lbl"]) if _pslab.get("slab_type_lbl") in _sl_type_opts else 1
-        _sl_lvl_idx   = _sl_lvl_opts.index(_pslab["level"]) if _pslab.get("level") in _sl_lvl_opts else 0
-        _sl_dir_idx   = _sl_dir_opts.index(_pslab.get("direction", "x").upper()) if _pslab.get("direction", "x").upper() in _sl_dir_opts else 0
-        _sl_cat_def   = _pslab.get("catalog_id") or "(automático)"
-        _sl_cat_idx   = _cat_sb_opts.index(_sl_cat_def) if _sl_cat_def in _cat_sb_opts else 0
-        with st.form("form_add_slab_sb", clear_on_submit=True):
-            _sb1, _sb2 = st.columns(2)
-            _sl_id_sb   = _sb1.text_input("ID", value=_pslab.get("id", f"LP{len(st.session_state.manual_slabs)+1}"))
-            _sl_span_sb = _sb1.number_input("Vão (m)", value=float(_pslab.get("span_m", 4.0)), min_value=0.5, step=0.25)
-            _sl_thk_sb  = _sb1.number_input("Esp. (cm)", value=int(_pslab.get("thickness_cm", 25)), min_value=8, max_value=50, step=1)
-            _sl_d_sb    = _sb1.number_input("d útil (cm)", value=int(_pslab.get("effective_depth_cm", 20)), min_value=5, max_value=45, step=1)
-            _sl_type_sb = _sb2.selectbox("Tipo", _sl_type_opts, index=_sl_type_idx)
-            _sl_lvl_sb  = _sb2.selectbox("Nível", _sl_lvl_opts, index=_sl_lvl_idx)
-            _sl_dir_sb  = _sb2.selectbox("Direção", _sl_dir_opts, index=_sl_dir_idx)
-            _sl_zona_sb = _sb2.selectbox("Zona (Qk)", _sl_zona_opts)
-            # Cargas separadas ao estilo Pavineiva
-            _sc1, _sc2, _sc3 = st.columns(3)
-            _sl_rev_sb = _sc1.number_input("Rev. (kN/m²)", value=float(_pslab.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1,
-                                            help="Revestimentos")
-            _sl_div_sb = _sc2.number_input("Div. (kN/m²)", value=float(_pslab.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1,
-                                            help="Divisórias")
-            _sl_psi1_sb = _sc3.number_input("ψ₁", value=float(_pslab.get("psi1", 0.3)), min_value=0.0, max_value=1.0, step=0.1,
-                                             help="SLS quasi-permanente (0.30 habitável, 0.70 armazém)")
-            st.caption("🔄 Laje selecionada automaticamente pelo Pavineiva (PP do catálogo + Rev + Div)")
-            _sl_cat_sb  = st.selectbox("Forçar laje (opcional)", _cat_sb_opts, index=_sl_cat_idx,
-                                        help="Deixa '(automático)' para o programa escolher a laje mais económica")
-            _slab_lbl = "✅ Atualizar laje" if _pslab else "➕ Adicionar laje"
-            if st.form_submit_button(_slab_lbl):
-                _type_map_sb = {"Aligeirada": "ribbed", "Maciça 1D": "one_way",
-                                "Maciça 2D": "two_way", "Consola": "cantilever"}
-                _gk_sb, _qk_sb = _zona_map_sb[_sl_zona_sb]
-                _ns = SlabPanel(
-                    id=_sl_id_sb.strip() or f"LP{len(st.session_state.manual_slabs)+1}",
-                    span_m=float(_sl_span_sb),
-                    thickness_cm=float(_sl_thk_sb),
-                    effective_depth_cm=float(_sl_d_sb),
-                    slab_type=SlabType(_type_map_sb[_sl_type_sb]),
-                    gk_kn_m2=_gk_sb,
-                    qk_kn_m2=_qk_sb,
-                    direction=_sl_dir_sb.lower(),
-                    rev_kn_m2=float(_sl_rev_sb),
-                    div_kn_m2=float(_sl_div_sb),
-                )
-                _ns.level = _sl_lvl_sb
-                _ns.catalog_id = None if _sl_cat_sb == "(automático)" else _sl_cat_sb
-                _ns.support_beam_ids = []
-                # Update psi1 for SLS if user changed it
-                if hasattr(_ns, 'psi1'):
-                    _ns.psi1 = float(_sl_psi1_sb)
-                st.session_state.manual_slabs.append(_ns)
-                st.session_state.pop("_prefill_slab", None)
-                st.rerun()
-        if st.session_state.manual_slabs:
-            _type_reverse_sb = {"ribbed": "Aligeirada", "one_way": "Maciça 1D",
-                                "two_way": "Maciça 2D", "cantilever": "Consola"}
-            for _i, _ms in enumerate(st.session_state.manual_slabs):
-                _ca, _cb, _cc = st.columns([5, 1, 1])
-                _ms_tp = _ms.slab_type.value if hasattr(_ms.slab_type, "value") else str(_ms.slab_type)
-                _ca.caption(f"**{_ms.id}** {getattr(_ms,'level','piso')} | {_ms.span_m}m "
-                            f"h={int(_ms.thickness_cm)}cm [{_type_reverse_sb.get(_ms_tp, _ms_tp)}]")
-                if _cb.button("✏️", key=f"edit_slab_{_i}", help="Editar"):
-                    st.session_state["_prefill_slab"] = {
-                        "id": _ms.id, "span_m": _ms.span_m, "thickness_cm": _ms.thickness_cm,
-                        "effective_depth_cm": _ms.effective_depth_cm,
-                        "slab_type_lbl": _type_reverse_sb.get(_ms_tp, "Maciça 1D"),
-                        "level": getattr(_ms, "level", "piso"),
-                        "direction": getattr(_ms, "direction", "x") or "x",
-                        "gk_kn_m2": _ms.gk_kn_m2, "qk_kn_m2": _ms.qk_kn_m2,
-                        "catalog_id": getattr(_ms, "catalog_id", None),
-                        "rev_kn_m2": getattr(_ms, "rev_kn_m2", 1.0),
-                        "div_kn_m2": getattr(_ms, "div_kn_m2", 1.5),
-                        "psi1": getattr(_ms, "psi1", 0.3),
-                    }
-                    st.session_state.manual_slabs.pop(_i)
-                    st.rerun()
-                if _cc.button("🗑", key=f"del_slab_{_i}", help="Apagar"):
-                    st.session_state.manual_slabs.pop(_i)
-                    st.rerun()
-
-    # ── Pórticos — definição por tramo ───────────────────────────────────────
-    _pt_list     = st.session_state.get("portico_tramos", [])
-    _cc_pt       = st.session_state.get("col_config") or {}
-    _n_pt_pil    = _cc_pt.get("n", 0)
-    _pil_opts_pt = ["—"] + [f"P{i}" for i in range(1, _n_pt_pil + 1)]
-    _pt_piso_ids = ["—"] + [s.id for s in st.session_state.manual_slabs
-                             if getattr(s, "level", "piso") != "cobertura"]
-    _pt_cob_ids  = ["—"] + [s.id for s in st.session_state.manual_slabs
-                             if getattr(s, "level", "piso") == "cobertura"]
-    _pt_by_pid: dict = {}
-    for _pt in _pt_list:
-        _pt_by_pid.setdefault(_pt["portico_id"], []).append(_pt)
-    _n_pt_porticos = len(_pt_by_pid)
-
-    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:8px 0 2px 0;text-transform:uppercase'>Pórticos</p>", unsafe_allow_html=True)
-    with st.expander(f"Pórticos ({_n_pt_porticos} pórtico(s))"):
-        # ── Pórticos existentes ──
-        for _ppid, _tramos in _pt_by_pid.items():
-            _pa, _pb = st.columns([6, 1])
-            _pa.markdown(f"**{_ppid}** — {len(_tramos)} tramos")
-            if _pb.button("🗑", key=f"del_ptg_{_ppid}", help="Apagar pórtico"):
-                st.session_state.portico_tramos = [t for t in _pt_list
-                                                   if t["portico_id"] != _ppid]
-                _rebuild_psmap(st.session_state.portico_tramos, st.session_state)
-                st.rerun()
-            for _tidx, _tr in enumerate(sorted(_tramos, key=lambda t: t["tramo"])):
-                _ca, _cb = st.columns([9, 1])
-                _cc_lbl = (f"  carga={_tr.get('carga_concentrada_kn',0):.0f}kN"
-                           if _tr.get("carga_concentrada_kn", 0) else "")
-                _alt_lbl = (f"  h={_tr.get('altura_m',0):.2f}m"
-                            if _tr.get("altura_m") else "")
-                _ca.caption(
-                    f"  T{_tr['tramo']}: {_tr.get('pilar_esq','—')}→{_tr.get('pilar_dir','—')}  "
-                    f"{_tr.get('span_m',0):.2f}m{_alt_lbl}{_cc_lbl}"
-                )
-                if _cb.button("🗑", key=f"del_ptr_{_ppid}_{_tidx}", help="Apagar tramo"):
-                    st.session_state.portico_tramos = [
-                        t for t in _pt_list
-                        if not (t["portico_id"] == _ppid and t["tramo"] == _tr["tramo"])
-                    ]
-                    _rebuild_psmap(st.session_state.portico_tramos, st.session_state)
-                    st.rerun()
-
-        if _pt_list:
-            st.divider()
-
-        # ── Criar novo pórtico ──
-        _draft_pt = st.session_state.get("_draft_portico")
-
-        if _draft_pt is None:
-            # Step 1: definir ID e nº de tramos
-            with st.form("form_pt_header", clear_on_submit=False):
-                _pt_id_new = st.text_input("ID do pórtico", value="Pórtico ",
-                                           help="Ex: «Pórtico 1»")
-                _pt_n_new  = st.number_input("Nº de tramos", value=3,
-                                             min_value=1, max_value=20, step=1)
-                if st.form_submit_button("➕ Criar pórtico"):
-                    st.session_state["_draft_portico"] = {
-                        "id": _pt_id_new.strip() or "Pórtico",
-                        "n":  int(_pt_n_new),
-                    }
-                    st.rerun()
-        else:
-            # Step 2: preencher os N tramos
-            _draft_n  = _draft_pt["n"]
-            _draft_id = _draft_pt["id"]
-            st.markdown(f"**{_draft_id}** — {_draft_n} tramo(s)")
-            st.caption("Preenche cada tramo e clica Guardar.")
-
-            with st.form("form_pt_fill"):
-                # Default height from col_config
-                _default_h = float((_cc_pt or {}).get("h_piso", 2.80))
-                _tv: list = []   # (pe, pd, sp, alt, lep, ldp, lec, ldc, cc, dcc)
-                for _i in range(_draft_n):
-                    st.markdown(f"**Tramo {_i + 1}**")
-                    _r1a, _r1b = st.columns(2)
-                    _pe  = _r1a.selectbox("Pilar esq.", _pil_opts_pt,
-                                          key=f"dp_pe_{_i}")
-                    _pd  = _r1b.selectbox("Pilar dir.", _pil_opts_pt,
-                                          key=f"dp_pd_{_i}")
-                    _r2a, _r2b = st.columns(2)
-                    _sp  = _r2a.number_input("Dist. entre pilares (m)", value=5.0,
-                                             min_value=0.1, step=0.05,
-                                             key=f"dp_sp_{_i}")
-                    _alt = _r2b.number_input("Altura do piso (m)", value=_default_h,
-                                             min_value=1.0, step=0.05,
-                                             key=f"dp_alt_{_i}",
-                                             help="Altura livre do piso neste tramo")
-                    _r3a, _r3b = st.columns(2)
-                    _lep = _r3a.selectbox("Laje esq piso", _pt_piso_ids,
-                                          key=f"dp_lep_{_i}")
-                    _ldp = _r3b.selectbox("Laje dir piso", _pt_piso_ids,
-                                          key=f"dp_ldp_{_i}")
-                    _r4a, _r4b = st.columns(2)
-                    _lec = _r4a.selectbox("Laje esq cob", _pt_cob_ids,
-                                          key=f"dp_lec_{_i}")
-                    _ldc = _r4b.selectbox("Laje dir cob", _pt_cob_ids,
-                                          key=f"dp_ldc_{_i}")
-                    _r5a, _r5b = st.columns(2)
-                    _cc_kn  = _r5a.number_input("Carga conc. (kN)", value=0.0,
-                                                min_value=0.0, step=1.0,
-                                                key=f"dp_cc_{_i}")
-                    _cc_dpl = _r5b.number_input("Dist. ao P.dir (m)", value=0.0,
-                                                min_value=0.0, step=0.05,
-                                                key=f"dp_dcc_{_i}")
-                    _tv.append((_pe, _pd, _sp, _alt, _lep, _ldp, _lec, _ldc,
-                                _cc_kn, _cc_dpl))
-
-                _col_ok, _col_cancel = st.columns(2)
-                _pt_saved    = _col_ok.form_submit_button("✅ Guardar")
-                _pt_canceled = _col_cancel.form_submit_button("❌ Cancelar")
-
-                if _pt_saved:
-                    for _i, (_pe, _pd, _sp, _alt, _lep, _ldp, _lec, _ldc,
-                             _cc_kn, _cc_dpl) in enumerate(_tv):
-                        _pt_list.append({
-                            "portico_id": _draft_id,
-                            "tramo":      _i + 1,
-                            "pilar_esq":  "" if _pe  == "—" else _pe,
-                            "pilar_dir":  "" if _pd  == "—" else _pd,
-                            "span_m":     float(_sp),
-                            "altura_m":   float(_alt),
-                            "laje_esq_piso": "" if _lep == "—" else _lep,
-                            "laje_dir_piso": "" if _ldp == "—" else _ldp,
-                            "laje_esq_cob":  "" if _lec == "—" else _lec,
-                            "laje_dir_cob":  "" if _ldc == "—" else _ldc,
-                            "carga_concentrada_kn":    float(_cc_kn),
-                            "dist_carga_pilar_dir_m":  float(_cc_dpl),
-                        })
-                    st.session_state.portico_tramos = _pt_list
-                    _rebuild_psmap(_pt_list, st.session_state)
-                    del st.session_state["_draft_portico"]
-                    st.rerun()
-
-                if _pt_canceled:
-                    del st.session_state["_draft_portico"]
-                    st.rerun()
-
-    # ── Configuração de Cargas ───────────────────────────────────────────────
-    st.divider()
-    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:8px 0 2px 0;text-transform:uppercase'>Cargas</p>", unsafe_allow_html=True)
-    with st.expander("Laje de piso"):
-        _laje_opts  = {v[1]: k for k, v in LAJE.items()}
-        _iso_opts   = {v[1]: k for k, v in ISOLAMENTO.items()}
-        _acab_opts  = {v[1]: k for k, v in ACABAMENTO_PISO.items()}
-        _uso_opts   = {v[1]: k for k, v in USE_CATEGORY.items()}
-
-        lj_laje  = st.selectbox("Tipo de laje",    list(_laje_opts.keys()), index=2, key="lj_laje")
-        lj_bet1  = st.number_input("1ª Betonilha (cm)", value=12, min_value=0, max_value=30, step=1, key="lj_bet1")
-        lj_iso   = st.selectbox("Isolamento térmico", list(_iso_opts.keys()), index=1, key="lj_iso")
-        lj_bet2  = st.number_input("2ª Betonilha regularização (cm)", value=5, min_value=0, max_value=15, step=1, key="lj_bet2")
-        lj_acab  = st.selectbox("Acabamento piso", list(_acab_opts.keys()), index=0, key="lj_acab")
-        lj_uso   = st.selectbox("Utilização", list(_uso_opts.keys()), index=0, key="lj_uso")
-        lj_pared = st.checkbox("Paredes divisórias (+1 kN/m²)", value=True, key="lj_pared")
-
-        _cfg_piso = LoadConfigurator()
-        _gk_p, _qk_p, _bdown_p = _cfg_piso.calc_floor(
-            _laje_opts[lj_laje], lj_bet1, _iso_opts[lj_iso],
-            lj_bet2, _acab_opts[lj_acab], _uso_opts[lj_uso], lj_pared)
-        st.success(f"**gk = {_gk_p} kN/m²  |  qk = {_qk_p} kN/m²**")
-        with st.expander("Ver decomposição"):
-            for _l in _bdown_p:
-                st.caption(_l)
-
-    with st.expander("Laje de cobertura"):
-        _imp_opts   = {v[1]: k for k, v in IMPERMEABILIZACAO.items()}
-        _pend_opts  = {v[1]: k for k, v in BETONILHA_PENDENTE.items()}
-        _acob_opts  = {v[1]: k for k, v in ACABAMENTO_COB.items()}
-        _equip_opts = {v[1]: k for k, v in EQUIPAMENTOS_COB.items()}
-
-        cb_laje  = st.selectbox("Tipo de laje",        list(_laje_opts.keys()), index=2, key="cb_laje")
-        cb_imp   = st.selectbox("Impermeabilização",    list(_imp_opts.keys()),  index=1, key="cb_imp")
-        cb_iso   = st.selectbox("Isolamento",           list(_iso_opts.keys()),  index=2, key="cb_iso")
-        cb_pend  = st.selectbox("Betonilha de pendente",list(_pend_opts.keys()), index=2, key="cb_pend")
-        cb_acab  = st.selectbox("Acabamento/protecção", list(_acob_opts.keys()), index=0, key="cb_acab")
-        cb_equip = st.selectbox("Equipamentos",         list(_equip_opts.keys()),index=0, key="cb_equip")
-        cb_uso   = st.selectbox("Utilização cobertura",
-                                ["Cobertura — acesso manutenção", "Cobertura — acessível ao público"],
-                                index=0, key="cb_uso")
-        _uso_cob_key = "cobertura_manutencao" if "manutenção" in cb_uso else "cobertura_acessivel"
-
-        _cfg_cob = LoadConfigurator()
-        _gk_c, _qk_c, _bdown_c = _cfg_cob.calc_roof(
-            _laje_opts[cb_laje], _imp_opts[cb_imp], _iso_opts[cb_iso],
-            _pend_opts[cb_pend], _acob_opts[cb_acab], _equip_opts[cb_equip], _uso_cob_key)
-        st.success(f"**gk = {_gk_c} kN/m²  |  qk = {_qk_c} kN/m²**")
-        with st.expander("Ver decomposição"):
-            for _l in _bdown_c:
-                st.caption(_l)
-
-    with st.expander("Zonas especiais"):
-        _col1, _col2 = st.columns(2)
-        with _col1:
-            st.caption("**Varanda**")
-            _gk_var, _qk_var = LoadConfigurator().calc_varanda()
-            st.info(f"gk={_gk_var} | qk={_qk_var} kN/m²")
-        with _col2:
-            st.caption("**Garagem**")
-            _gar_veh = st.selectbox("Tipo", ["garagem_ligeiros","garagem_pesados"], key="gar_veh")
-            _gk_gar, _qk_gar = LoadConfigurator().calc_garagem(veiculos=_gar_veh)
-            st.info(f"gk={_gk_gar} | qk={_qk_gar} kN/m²")
-
-    # Store load config for use in analysis
+# ── Variáveis antes removidas da sidebar ─────────────────────────────────────
+mode = "CSV"
+dxf_upload = col_csv = beam_csv = slab_csv = slab_loads_csv = None
+soil_mpa = st.session_state.get("_soil_mpa", 0.20)
+fck_mpa  = st.session_state.get("_fck_mpa", 25)
+fyk_mpa  = st.session_state.get("_fyk_mpa", 500)
+_pi_sb = st.session_state.get("project_info") or {}
+project_name = "Projeto Estrutural"
+location = _pi_sb.get("morada_obra") or "—"
+if "load_cfg" not in st.session_state:
     st.session_state["load_cfg"] = {
-        "gk_piso": _gk_p, "qk_piso": _qk_p,
-        "gk_cob":  _gk_c, "qk_cob":  _qk_c,
-        "gk_var":  _gk_var, "qk_var": _qk_var,
-        "gk_gar":  _gk_gar, "qk_gar": _qk_gar,
+        "gk_piso": 6.15, "qk_piso": 2.0,
+        "gk_cob": 5.50,  "qk_cob": 1.0,
+        "gk_var": 5.50,  "qk_var": 3.0,
+        "gk_gar": 4.80,  "qk_gar": 2.5,
     }
-
-    # ── Pre-dimensionamento de pilares ───────────────────────────────────────
-    st.divider()
-    st.markdown("<p style='color:#c9a84c;font-size:0.65rem;letter-spacing:.12em;margin:4px 0 2px 0;text-transform:uppercase'>Pré-dimensionamento</p>", unsafe_allow_html=True)
-    with st.expander("Calcular secções automaticamente"):
-        st.caption("O programa calcula as dimensões mínimas para cada pilar com base nas cargas e na área tributária.")
-        pd_gk      = st.number_input("gk por piso (kN/m²)", value=5.0, min_value=1.0, step=0.5)
-        pd_qk      = st.number_input("qk por piso (kN/m²)", value=2.0, min_value=0.5, step=0.5)
-        pd_npisos  = st.number_input("Nº de pisos", value=3, min_value=1, max_value=30, step=1)
-        pd_h       = st.number_input("Altura do piso (m)", value=3.0, min_value=2.0, step=0.25)
-        pd_shape   = st.selectbox("Forma", ["rectangular", "circular"])
-        pd_safety  = st.slider("Margem de segurança", 1.00, 1.30, 1.10, 0.05)
-        pd_span    = st.number_input("Vão médio estimado (m)", value=4.0, min_value=2.0, step=0.5,
-                                     help="Usado quando não há pilares adjacentes na direcção")
-        predim_btn = st.button("📐 Pré-dimensionar", use_container_width=True)
-
-    st.divider()
-    run_btn = st.button("▶  Correr cálculo", type="primary", use_container_width=True) \
-              or st.session_state.pop("_trigger_recalc", False)
-
-    has_project = st.session_state.project is not None
-    opt_btn = st.button(
-        "⚡  Otimizar projeto",
-        use_container_width=True,
-        disabled=not has_project,
-    )
-
-    if has_project:
-        st.divider()
-        st.markdown("**Downloads**")
-
-        if st.session_state.dxf_bytes:
-            st.download_button(
-                "⬇  DXF planta",
-                data=st.session_state.dxf_bytes,
-                file_name="planta_estrutura.dxf",
-                mime="application/octet-stream",
-                use_container_width=True,
-            )
-
-        gen_docx = st.button("📄  Gerar relatório DOCX", use_container_width=True)
-
-        if st.session_state.docx_bytes:
-            st.download_button(
-                "⬇  Guardar DOCX",
-                data=st.session_state.docx_bytes,
-                file_name="relatorio_estrutural.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True,
-            )
-
-        st.divider()
-        st.markdown("**Peças Desenhadas**")
-        st.caption("v2026.06.15b — recobrimento 3 cm")
-        gen_drawings = st.button("🖊  Gerar desenhos", use_container_width=True,
-                                 help="Gera planta de fundações, lajes e quadro de pilares")
-        if gen_drawings:
-            st.session_state.drawings_ready = False
-            st.session_state.pop("dxf_porticos", None)
-        if gen_drawings or st.session_state.get("drawings_ready"):
-            try:
-                from analysis.drawings import (draw_beam_schedule_dxf,
-                                               draw_foundation_plan_dxf,
-                                               draw_slab_plan_dxf,
-                                               draw_column_schedule_dxf,
-                                               draw_footing_schedule_dxf,
-                                               draw_slab_schedule_dxf,
-                                               draw_retaining_wall_schedule_dxf,
-                                               draw_footing_detail_dxf,
-                                               draw_column_section_dxf,
-                                               draw_tie_beam_detail_dxf,
-                                               draw_wall_detail_dxf,
-                                               draw_portico_elevations_dxf)
-                _p = st.session_state.project
-                if not st.session_state.get("drawings_ready"):
-                    with st.spinner("A gerar desenhos DXF…"):
-                        st.session_state["dxf_vigas"]         = draw_beam_schedule_dxf(_p)
-                        st.session_state["dxf_fundacoes"]     = draw_foundation_plan_dxf(_p)
-                        st.session_state["dxf_piso"]          = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE PISO")
-                        st.session_state["dxf_cobertura"]     = draw_slab_plan_dxf(_p, "PLANTA DA LAJE DE COBERTURA")
-                        st.session_state["dxf_pilares"]       = draw_column_schedule_dxf(_p)
-                        st.session_state["dxf_sapatas"]       = draw_footing_schedule_dxf(_p)
-                        st.session_state["dxf_lajes"]         = draw_slab_schedule_dxf(_p)
-                        st.session_state["dxf_muros"]         = draw_retaining_wall_schedule_dxf(_p)
-                        st.session_state["dxf_porm_sapatas"]  = draw_footing_detail_dxf(_p)
-                        st.session_state["dxf_porm_pilares"]  = draw_column_section_dxf(_p)
-                        st.session_state["dxf_porm_equilib"]  = draw_tie_beam_detail_dxf(_p)
-                        st.session_state["dxf_porm_muros"]    = draw_wall_detail_dxf(_p)
-                        st.session_state["drawings_ready"] = True
-                # Pórticos DXF: always regenerate (never cached — data depends on tramos)
-                _pt_tramos = st.session_state.get("portico_tramos", [])
-                if _pt_tramos and st.session_state.get("project"):
-                    with st.spinner("A gerar alçados DXF…"):
-                        st.session_state["dxf_porticos"] = draw_portico_elevations_dxf(
-                            st.session_state.project, _pt_tramos)
-                if st.session_state.get("dxf_porticos"):
-                    st.download_button("⬇  Alçados de Pórticos (DXF)",
-                        data=st.session_state["dxf_porticos"],
-                        file_name="alcados_porticos.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_fundacoes"):
-                    st.download_button("⬇  Planta Fundações (DXF)",
-                        data=st.session_state["dxf_fundacoes"],
-                        file_name="planta_fundacoes.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_piso"):
-                    st.download_button("⬇  Planta Laje Piso (DXF)",
-                        data=st.session_state["dxf_piso"],
-                        file_name="laje_piso.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_cobertura"):
-                    st.download_button("⬇  Planta Laje Cobertura (DXF)",
-                        data=st.session_state["dxf_cobertura"],
-                        file_name="laje_cobertura.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_pilares"):
-                    st.download_button("⬇  Quadro de Pilares (DXF)",
-                        data=st.session_state["dxf_pilares"],
-                        file_name="quadro_pilares.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_sapatas"):
-                    st.download_button("⬇  Quadro de Sapatas (DXF)",
-                        data=st.session_state["dxf_sapatas"],
-                        file_name="quadro_sapatas.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_vigas"):
-                    st.download_button("⬇  Quadro de Vigas (DXF)",
-                        data=st.session_state["dxf_vigas"],
-                        file_name="quadro_vigas.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_lajes"):
-                    st.download_button("⬇  Quadro de Lajes (DXF)",
-                        data=st.session_state["dxf_lajes"],
-                        file_name="quadro_lajes.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_muros"):
-                    st.download_button("⬇  Muros e Sapatas Corridas (DXF)",
-                        data=st.session_state["dxf_muros"],
-                        file_name="muros_sapatas_corridas.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                # Pormenores
-                st.markdown("**Pormenores**")
-                if st.session_state.get("dxf_porm_sapatas"):
-                    st.download_button("⬇  Pormenor Sapatas Isoladas (DXF)",
-                        data=st.session_state["dxf_porm_sapatas"],
-                        file_name="pormenor_sapatas_isoladas.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_porm_pilares"):
-                    st.download_button("⬇  Pormenor Pilares — Secção (DXF)",
-                        data=st.session_state["dxf_porm_pilares"],
-                        file_name="pormenor_pilares_seccao.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_porm_equilib"):
-                    st.download_button("⬇  Pormenor Vigas de Equilíbrio (DXF)",
-                        data=st.session_state["dxf_porm_equilib"],
-                        file_name="pormenor_vigas_equilibrio.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-                if st.session_state.get("dxf_porm_muros"):
-                    st.download_button("⬇  Pormenor Muro de Betão (DXF)",
-                        data=st.session_state["dxf_porm_muros"],
-                        file_name="pormenor_muro_betao.dxf",
-                        mime="application/octet-stream",
-                        use_container_width=True)
-            except Exception as _e:
-                st.error(f"Erro ao gerar desenhos: {_e}")
-    else:
-        gen_docx = False
-
+predim_btn = False
+pd_gk = 5.0; pd_qk = 2.0; pd_npisos = 3; pd_h = 3.0
+pd_shape = "rectangular"; pd_safety = 1.10; pd_span = 4.0
+run_btn   = st.session_state.pop("_trigger_recalc", False)
+opt_btn   = st.session_state.pop("_trigger_opt",    False)
+gen_docx  = False
+if st.session_state.pop("_trigger_docx", False) and st.session_state.project:
+    gen_docx = True
 
 # ─── Actions ──────────────────────────────────────────────────────────────────
 if run_btn:
@@ -2029,6 +1243,53 @@ if _sel_spec != "Estruturas":
     """, unsafe_allow_html=True)
     st.stop()
 
+# ── Barra de acções ─────────────────────────────────────────────────────────
+_act_left, _act_mid, _act_right = st.columns([3, 1, 1])
+with _act_left:
+    _ac1, _ac2, _ac3 = st.columns(3)
+    _soil_val = _ac1.number_input("Solo (MPa)", value=st.session_state.get("_soil_mpa", 0.20),
+                                   min_value=0.05, max_value=2.0, step=0.05, format="%.2f",
+                                   key="act_soil")
+    _fck_opts = {"C16/20": 16, "C20/25": 20, "C25/30": 25, "C30/37": 30, "C35/45": 35, "C40/50": 40}
+    _fyk_opts = {"A400NR": 400, "A500NR": 500, "A600NR": 600}
+    _fck_lbl  = _ac2.selectbox("Betão", list(_fck_opts.keys()),
+                                index=list(_fck_opts.keys()).index(st.session_state.get("_fck_lbl","C25/30")),
+                                key="act_fck")
+    _fyk_lbl  = _ac3.selectbox("Aço", list(_fyk_opts.keys()),
+                                index=list(_fyk_opts.keys()).index(st.session_state.get("_fyk_lbl","A500NR")),
+                                key="act_fyk")
+    st.session_state["_soil_mpa"] = _soil_val
+    st.session_state["_fck_mpa"]  = _fck_opts[_fck_lbl]
+    st.session_state["_fck_lbl"]  = _fck_lbl
+    st.session_state["_fyk_mpa"]  = _fyk_opts[_fyk_lbl]
+    st.session_state["_fyk_lbl"]  = _fyk_lbl
+    soil_mpa = _soil_val
+    fck_mpa  = _fck_opts[_fck_lbl]
+    fyk_mpa  = _fyk_opts[_fyk_lbl]
+with _act_mid:
+    if st.button("▶  Correr cálculo", type="primary", use_container_width=True, key="act_run"):
+        st.session_state["_trigger_recalc"] = True
+        st.rerun()
+    if st.session_state.project:
+        if st.button("⚡  Otimizar", use_container_width=True, key="act_opt"):
+            st.session_state["_trigger_opt"] = True
+            st.rerun()
+with _act_right:
+    from core.persistence import save_inputs as _save_inp2
+    _inp_keys2 = ["manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
+                  "manual_stairs", "col_config", "cols_in_cont_footing",
+                  "portico_slab_map", "portico_tramos", "beam_overrides", "project_info"]
+    _inp_snap2 = {k: st.session_state.get(k) for k in _inp_keys2}
+    _inp_bytes2 = _save_inp2(_inp_snap2)
+    st.download_button("💾 Guardar inputs", data=_inp_bytes2, file_name="inputs.raptor",
+                       mime="application/json", use_container_width=True, key="act_save")
+    if st.session_state.project:
+        if st.button("📄  Relatório DOCX", use_container_width=True, key="act_docx"):
+            st.session_state["_trigger_docx"] = True
+            st.rerun()
+
+st.divider()
+
 if "predim_results" in st.session_state and st.session_state["predim_results"]:
     st.subheader("📐 Pré-dimensionamento de pilares")
     pd_rows = []
@@ -2070,7 +1331,7 @@ if st.session_state.project is None:
         st.markdown("""<div style="background:#0c1018;border:1px solid #1e2836;border-radius:6px;padding:18px;text-align:center;height:120px">
           <div style="font-size:1.6rem">🏛️</div>
           <div style="color:#c9a84c;font-size:0.75rem;letter-spacing:.06em;margin:6px 0 4px">1. PILARES</div>
-          <div style="color:#555;font-size:0.7rem">Define nº de pilares<br>na barra lateral</div>
+          <div style="color:#555;font-size:0.7rem">Define nº de pilares<br>no tab Pilares</div>
         </div>""", unsafe_allow_html=True)
     with _hw2:
         st.markdown("""<div style="background:#0c1018;border:1px solid #1e2836;border-radius:6px;padding:18px;text-align:center;height:120px">
@@ -2082,7 +1343,7 @@ if st.session_state.project is None:
         st.markdown("""<div style="background:#0c1018;border:1px solid #1e2836;border-radius:6px;padding:18px;text-align:center;height:120px">
           <div style="font-size:1.6rem">▶️</div>
           <div style="color:#c9a84c;font-size:0.75rem;letter-spacing:.06em;margin:6px 0 4px">3. CALCULAR</div>
-          <div style="color:#555;font-size:0.7rem">Clica o botão<br>na barra lateral ↙</div>
+          <div style="color:#555;font-size:0.7rem">Clica ▶ Correr cálculo<br>na barra de acções</div>
         </div>""", unsafe_allow_html=True)
     st.stop()
 
@@ -2197,6 +1458,125 @@ with tab_res:
 
 # ── Pórticos ──────────────────────────────────────────────────────────────────
 with tab_porticos:
+    # ── Dados de entrada ──────────────────────────────────────────────────────
+    st.subheader("Dados de entrada")
+    _pt_list     = st.session_state.get("portico_tramos", [])
+    _cc_pt       = st.session_state.get("col_config") or {}
+    _n_pt_pil    = _cc_pt.get("n", 0)
+    _pil_opts_pt = ["—"] + [f"P{i}" for i in range(1, _n_pt_pil + 1)]
+    _pt_piso_ids = ["—"] + [s.id for s in st.session_state.manual_slabs
+                             if getattr(s, "level", "piso") != "cobertura"]
+    _pt_cob_ids  = ["—"] + [s.id for s in st.session_state.manual_slabs
+                             if getattr(s, "level", "piso") == "cobertura"]
+    _pt_by_pid: dict = {}
+    for _pt in _pt_list:
+        _pt_by_pid.setdefault(_pt["portico_id"], []).append(_pt)
+    _n_pt_porticos = len(_pt_by_pid)
+
+    with st.expander(f"Pórticos ({_n_pt_porticos} pórtico(s))", expanded=(_n_pt_porticos == 0)):
+        for _ppid, _tramos in _pt_by_pid.items():
+            _pa, _pb = st.columns([6, 1])
+            _pa.markdown(f"**{_ppid}** — {len(_tramos)} tramos")
+            if _pb.button("🗑", key=f"del_ptg_{_ppid}", help="Apagar pórtico"):
+                st.session_state.portico_tramos = [t for t in _pt_list
+                                                   if t["portico_id"] != _ppid]
+                _rebuild_psmap(st.session_state.portico_tramos, st.session_state)
+                st.rerun()
+            for _tidx, _tr in enumerate(sorted(_tramos, key=lambda t: t["tramo"])):
+                _ca, _cb = st.columns([9, 1])
+                _cc_lbl = (f"  carga={_tr.get('carga_concentrada_kn',0):.0f}kN"
+                           if _tr.get("carga_concentrada_kn", 0) else "")
+                _alt_lbl = (f"  h={_tr.get('altura_m',0):.2f}m"
+                            if _tr.get("altura_m") else "")
+                _ca.caption(
+                    f"  T{_tr['tramo']}: {_tr.get('pilar_esq','—')}→{_tr.get('pilar_dir','—')}  "
+                    f"{_tr.get('span_m',0):.2f}m{_alt_lbl}{_cc_lbl}"
+                )
+                if _cb.button("🗑", key=f"del_ptr_{_ppid}_{_tidx}", help="Apagar tramo"):
+                    st.session_state.portico_tramos = [
+                        t for t in _pt_list
+                        if not (t["portico_id"] == _ppid and t["tramo"] == _tr["tramo"])
+                    ]
+                    _rebuild_psmap(st.session_state.portico_tramos, st.session_state)
+                    st.rerun()
+
+        if _pt_list:
+            st.divider()
+
+        _draft_pt = st.session_state.get("_draft_portico")
+        if _draft_pt is None:
+            with st.form("form_pt_header", clear_on_submit=False):
+                _pt_id_new = st.text_input("ID do pórtico", value="Pórtico ",
+                                           help="Ex: «Pórtico 1»")
+                _pt_n_new  = st.number_input("Nº de tramos", value=3,
+                                             min_value=1, max_value=20, step=1)
+                if st.form_submit_button("➕ Criar pórtico"):
+                    st.session_state["_draft_portico"] = {
+                        "id": _pt_id_new.strip() or "Pórtico",
+                        "n":  int(_pt_n_new),
+                    }
+                    st.rerun()
+        else:
+            _draft_n  = _draft_pt["n"]
+            _draft_id = _draft_pt["id"]
+            st.markdown(f"**{_draft_id}** — {_draft_n} tramo(s)")
+            st.caption("Preenche cada tramo e clica Guardar.")
+            with st.form("form_pt_fill"):
+                _default_h = float((_cc_pt or {}).get("h_piso", 2.80))
+                _tv: list = []
+                for _i in range(_draft_n):
+                    st.markdown(f"**Tramo {_i + 1}**")
+                    _r1a, _r1b = st.columns(2)
+                    _pe  = _r1a.selectbox("Pilar esq.", _pil_opts_pt, key=f"dp_pe_{_i}")
+                    _pd  = _r1b.selectbox("Pilar dir.", _pil_opts_pt, key=f"dp_pd_{_i}")
+                    _r2a, _r2b = st.columns(2)
+                    _sp  = _r2a.number_input("Dist. entre pilares (m)", value=5.0,
+                                             min_value=0.1, step=0.05, key=f"dp_sp_{_i}")
+                    _alt = _r2b.number_input("Altura do piso (m)", value=_default_h,
+                                             min_value=1.0, step=0.05, key=f"dp_alt_{_i}",
+                                             help="Altura livre do piso neste tramo")
+                    _r3a, _r3b = st.columns(2)
+                    _lep = _r3a.selectbox("Laje esq piso", _pt_piso_ids, key=f"dp_lep_{_i}")
+                    _ldp = _r3b.selectbox("Laje dir piso", _pt_piso_ids, key=f"dp_ldp_{_i}")
+                    _r4a, _r4b = st.columns(2)
+                    _lec = _r4a.selectbox("Laje esq cob", _pt_cob_ids, key=f"dp_lec_{_i}")
+                    _ldc = _r4b.selectbox("Laje dir cob", _pt_cob_ids, key=f"dp_ldc_{_i}")
+                    _r5a, _r5b = st.columns(2)
+                    _cc_kn  = _r5a.number_input("Carga conc. (kN)", value=0.0,
+                                                min_value=0.0, step=1.0, key=f"dp_cc_{_i}")
+                    _cc_dpl = _r5b.number_input("Dist. ao P.dir (m)", value=0.0,
+                                                min_value=0.0, step=0.05, key=f"dp_dcc_{_i}")
+                    _tv.append((_pe, _pd, _sp, _alt, _lep, _ldp, _lec, _ldc, _cc_kn, _cc_dpl))
+
+                _col_ok, _col_cancel = st.columns(2)
+                _pt_saved    = _col_ok.form_submit_button("✅ Guardar")
+                _pt_canceled = _col_cancel.form_submit_button("❌ Cancelar")
+                if _pt_saved:
+                    for _i, (_pe, _pd, _sp, _alt, _lep, _ldp, _lec, _ldc,
+                             _cc_kn, _cc_dpl) in enumerate(_tv):
+                        _pt_list.append({
+                            "portico_id": _draft_id,
+                            "tramo":      _i + 1,
+                            "pilar_esq":  "" if _pe  == "—" else _pe,
+                            "pilar_dir":  "" if _pd  == "—" else _pd,
+                            "span_m":     float(_sp),
+                            "altura_m":   float(_alt),
+                            "laje_esq_piso": "" if _lep == "—" else _lep,
+                            "laje_dir_piso": "" if _ldp == "—" else _ldp,
+                            "laje_esq_cob":  "" if _lec == "—" else _lec,
+                            "laje_dir_cob":  "" if _ldc == "—" else _ldc,
+                            "carga_concentrada_kn":   float(_cc_kn),
+                            "dist_carga_pilar_dir_m": float(_cc_dpl),
+                        })
+                    st.session_state.portico_tramos = _pt_list
+                    _rebuild_psmap(_pt_list, st.session_state)
+                    del st.session_state["_draft_portico"]
+                    st.rerun()
+                if _pt_canceled:
+                    del st.session_state["_draft_portico"]
+                    st.rerun()
+    st.divider()
+
     # Deduplicate slabs from project + manual
     _seen_pt = set()
     _piso_slab_ids, _cob_slab_ids = [], []
@@ -2486,6 +1866,73 @@ with tab_vigas:
 
 # ── Pilares ───────────────────────────────────────────────────────────────────
 with tab_pilares:
+    # ── Dados de entrada ──────────────────────────────────────────────────────
+    st.subheader("Dados de entrada")
+    _cc_cur = st.session_state.get("col_config") or {}
+    _n_def  = _cc_cur.get("n", 0)
+    with st.expander(f"Pilares ({_n_def} pilares)", expanded=(_n_def == 0)):
+        st.caption("Define o número de pilares, pisos e alturas.")
+        _pc1, _pc2 = st.columns(2)
+        _n_pil = int(_pc1.number_input("Nº de pilares", value=_n_def, min_value=0, max_value=60, step=1, key="cc_n"))
+        _n_pis = int(_pc1.number_input("Nº de pisos", value=_cc_cur.get("n_pisos", 2), min_value=1, max_value=15, step=1, key="cc_npisos"))
+        _h_cav = float(_pc2.number_input("H sapata→piso 1 (m)", value=float(_cc_cur.get("h_cave", 2.80)), min_value=1.0, step=0.05, key="cc_hcave"))
+        _h_pis = float(_pc2.number_input("H entre pisos (m)", value=float(_cc_cur.get("h_piso", 2.80)), min_value=2.0, step=0.05, key="cc_hpiso"))
+        _b_col = int(_pc1.number_input("Secção b (cm)", value=_cc_cur.get("b", 30), min_value=20, max_value=120, step=5, key="cc_b"))
+        _h_col = int(_pc2.number_input("Secção h (cm)", value=_cc_cur.get("h", 30), min_value=20, max_value=120, step=5, key="cc_h"))
+        _all_pil_ids = [f"P{i}" for i in range(1, _n_pil + 1)]
+        _cur_cont = [_p for _p in st.session_state.get("cols_in_cont_footing", []) if _p in _all_pil_ids]
+        _pil_cont = st.multiselect(
+            "Pilares em sapata corrida (muro cave)",
+            options=_all_pil_ids,
+            default=_cur_cont,
+            help="Os restantes ficam em sapata isolada.",
+            key="cc_cont_pils",
+        )
+        _isol_pils = [_p for _p in _all_pil_ids if _p not in _pil_cont]
+        if _isol_pils:
+            st.caption(f"Isoladas ({len(_isol_pils)}): {', '.join(_isol_pils[:8])}{'…' if len(_isol_pils)>8 else ''}")
+        if _pil_cont:
+            st.caption(f"Sapata corrida ({len(_pil_cont)}): {', '.join(_pil_cont)}")
+        if st.button("✅ Aplicar configuração de pilares", key="btn_apply_col_config"):
+            st.session_state["col_config"] = {
+                "n": _n_pil, "n_pisos": _n_pis,
+                "h_cave": _h_cav, "h_piso": _h_pis,
+                "b": _b_col, "h": _h_col,
+            }
+            st.session_state["cols_in_cont_footing"] = list(_pil_cont)
+            st.rerun()
+        if _cc_cur:
+            _h_tot_info = _cc_cur.get("h_cave", 2.8) + max(0, _cc_cur.get("n_pisos", 2) - 1) * _cc_cur.get("h_piso", 2.8)
+            st.info(f"✅ {_cc_cur['n']} pilares | {_cc_cur['n_pisos']} pisos | "
+                    f"H≈{_h_tot_info:.2f}m | {_cc_cur['b']}×{_cc_cur['h']}cm")
+            if st.button("🗑 Limpar configuração de pilares", key="btn_clear_col_config"):
+                st.session_state["col_config"] = None
+                st.session_state["cols_in_cont_footing"] = []
+                st.rerun()
+
+    with st.expander("Sapatas — tipo por pilar"):
+        st.caption("Define quais os pilares com sapata isolada vs sapata corrida do muro da cave.")
+        _cc2 = st.session_state.get("col_config")
+        _cont2 = st.session_state.get("cols_in_cont_footing", [])
+        if _cc2:
+            _all2 = [f"P{i}" for i in range(1, _cc2["n"] + 1)]
+            _new_cont2 = st.multiselect(
+                "Pilares em sapata corrida do muro cave",
+                options=_all2,
+                default=[_p for _p in _cont2 if _p in _all2],
+                key="sapatas_cont_pils",
+            )
+            if _new_cont2 != _cont2:
+                st.session_state["cols_in_cont_footing"] = list(_new_cont2)
+                st.rerun()
+            _isol2 = [_p for _p in _all2 if _p not in _new_cont2]
+            st.caption(f"**Sapatas isoladas ({len(_isol2)}):** {', '.join(_isol2)}")
+            if _new_cont2:
+                st.caption(f"**Sapata corrida ({len(_new_cont2)}):** {', '.join(_new_cont2)}")
+        else:
+            st.info("Define o número de pilares no expander Pilares acima.")
+    st.divider()
+
     # Building heights info banner
     _cc_tab = st.session_state.get("col_config")
     if _cc_tab:
@@ -2564,7 +2011,7 @@ def _render_slab_tab(tab_slabs, tab_key_prefix, show_catalog=False):
     """Render the shared per-slab editor + results table for a filtered list of slabs."""
     from core.model import SlabType
     if not tab_slabs:
-        st.info("Sem lajes deste tipo. Adiciona na barra lateral (seleciona o tipo correto).")
+        st.info("Sem lajes deste tipo. Adiciona no tab ⬜ Lajes Aligeiradas (seleciona o tipo correto).")
         return
 
     # Lajes manuais filter
@@ -2691,6 +2138,102 @@ def _render_slab_tab(tab_slabs, tab_key_prefix, show_catalog=False):
 
 # ── Lajes Aligeiradas ─────────────────────────────────────────────────────────
 with tab_lajes_alig:
+    # ── Dados de entrada ──────────────────────────────────────────────────────
+    st.subheader("Dados de entrada")
+    _pavinorte_sb = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
+    _other_sb     = [n for n in sorted(CATALOG.keys()) if not n.startswith(("V3-","V5-","2V"))] if _CATALOG_OK else []
+    _cat_sb_opts  = ["(automático)"] + _pavinorte_sb + _other_sb
+    _lcfg_sb      = st.session_state.get("load_cfg") or {}
+    _zona_map_sb  = {
+        "Habitável": (_lcfg_sb.get("gk_piso", 6.15), _lcfg_sb.get("qk_piso", 2.0)),
+        "Garagem":   (_lcfg_sb.get("gk_gar",  4.80), _lcfg_sb.get("qk_gar",  2.5)),
+        "Varanda":   (_lcfg_sb.get("gk_var",  5.50), _lcfg_sb.get("qk_var",  3.0)),
+        "Cobertura": (_lcfg_sb.get("gk_cob",  5.50), _lcfg_sb.get("qk_cob",  1.0)),
+    }
+    _sl_type_opts = ["Aligeirada", "Maciça 1D", "Maciça 2D", "Consola"]
+    _sl_lvl_opts  = ["piso", "cobertura"]
+    _sl_dir_opts  = ["X", "Y"]
+    _sl_zona_opts = list(_zona_map_sb.keys())
+    with st.expander(f"Lajes ({len(st.session_state.manual_slabs)})", expanded=(len(st.session_state.manual_slabs) == 0)):
+        _pslab = st.session_state.get("_prefill_slab", {})
+        _sl_type_idx  = _sl_type_opts.index(_pslab["slab_type_lbl"]) if _pslab.get("slab_type_lbl") in _sl_type_opts else 1
+        _sl_lvl_idx   = _sl_lvl_opts.index(_pslab["level"]) if _pslab.get("level") in _sl_lvl_opts else 0
+        _sl_dir_idx   = _sl_dir_opts.index(_pslab.get("direction", "x").upper()) if _pslab.get("direction", "x").upper() in _sl_dir_opts else 0
+        _sl_cat_def   = _pslab.get("catalog_id") or "(automático)"
+        _sl_cat_idx   = _cat_sb_opts.index(_sl_cat_def) if _sl_cat_def in _cat_sb_opts else 0
+        with st.form("form_add_slab_sb", clear_on_submit=True):
+            _sb1, _sb2 = st.columns(2)
+            _sl_id_sb   = _sb1.text_input("ID", value=_pslab.get("id", f"LP{len(st.session_state.manual_slabs)+1}"))
+            _sl_span_sb = _sb1.number_input("Vão (m)", value=float(_pslab.get("span_m", 4.0)), min_value=0.5, step=0.25)
+            _sl_thk_sb  = _sb1.number_input("Esp. (cm)", value=int(_pslab.get("thickness_cm", 25)), min_value=8, max_value=50, step=1)
+            _sl_d_sb    = _sb1.number_input("d útil (cm)", value=int(_pslab.get("effective_depth_cm", 20)), min_value=5, max_value=45, step=1)
+            _sl_type_sb = _sb2.selectbox("Tipo", _sl_type_opts, index=_sl_type_idx)
+            _sl_lvl_sb  = _sb2.selectbox("Nível", _sl_lvl_opts, index=_sl_lvl_idx)
+            _sl_dir_sb  = _sb2.selectbox("Direção", _sl_dir_opts, index=_sl_dir_idx)
+            _sl_zona_sb = _sb2.selectbox("Zona (Qk)", _sl_zona_opts)
+            _sc1, _sc2, _sc3 = st.columns(3)
+            _sl_rev_sb  = _sc1.number_input("Rev. (kN/m²)", value=float(_pslab.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1,
+                                            help="Revestimentos")
+            _sl_div_sb  = _sc2.number_input("Div. (kN/m²)", value=float(_pslab.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1,
+                                            help="Divisórias")
+            _sl_psi1_sb = _sc3.number_input("ψ₁", value=float(_pslab.get("psi1", 0.3)), min_value=0.0, max_value=1.0, step=0.1,
+                                             help="SLS quasi-permanente (0.30 habitável, 0.70 armazém)")
+            st.caption("🔄 Laje selecionada automaticamente pelo Pavineiva (PP do catálogo + Rev + Div)")
+            _sl_cat_sb  = st.selectbox("Forçar laje (opcional)", _cat_sb_opts, index=_sl_cat_idx,
+                                        help="Deixa '(automático)' para o programa escolher a laje mais económica")
+            _slab_lbl = "✅ Atualizar laje" if _pslab else "➕ Adicionar laje"
+            if st.form_submit_button(_slab_lbl):
+                _type_map_sb = {"Aligeirada": "ribbed", "Maciça 1D": "one_way",
+                                "Maciça 2D": "two_way", "Consola": "cantilever"}
+                _gk_sb, _qk_sb = _zona_map_sb[_sl_zona_sb]
+                _ns = SlabPanel(
+                    id=_sl_id_sb.strip() or f"LP{len(st.session_state.manual_slabs)+1}",
+                    span_m=float(_sl_span_sb),
+                    thickness_cm=float(_sl_thk_sb),
+                    effective_depth_cm=float(_sl_d_sb),
+                    slab_type=SlabType(_type_map_sb[_sl_type_sb]),
+                    gk_kn_m2=_gk_sb,
+                    qk_kn_m2=_qk_sb,
+                    direction=_sl_dir_sb.lower(),
+                    rev_kn_m2=float(_sl_rev_sb),
+                    div_kn_m2=float(_sl_div_sb),
+                )
+                _ns.level = _sl_lvl_sb
+                _ns.catalog_id = None if _sl_cat_sb == "(automático)" else _sl_cat_sb
+                _ns.support_beam_ids = []
+                if hasattr(_ns, 'psi1'):
+                    _ns.psi1 = float(_sl_psi1_sb)
+                st.session_state.manual_slabs.append(_ns)
+                st.session_state.pop("_prefill_slab", None)
+                st.rerun()
+        if st.session_state.manual_slabs:
+            _type_reverse_sb = {"ribbed": "Aligeirada", "one_way": "Maciça 1D",
+                                "two_way": "Maciça 2D", "cantilever": "Consola"}
+            for _i, _ms in enumerate(st.session_state.manual_slabs):
+                _ca, _cb, _cc = st.columns([5, 1, 1])
+                _ms_tp = _ms.slab_type.value if hasattr(_ms.slab_type, "value") else str(_ms.slab_type)
+                _ca.caption(f"**{_ms.id}** {getattr(_ms,'level','piso')} | {_ms.span_m}m "
+                            f"h={int(_ms.thickness_cm)}cm [{_type_reverse_sb.get(_ms_tp, _ms_tp)}]")
+                if _cb.button("✏️", key=f"edit_slab_{_i}", help="Editar"):
+                    st.session_state["_prefill_slab"] = {
+                        "id": _ms.id, "span_m": _ms.span_m, "thickness_cm": _ms.thickness_cm,
+                        "effective_depth_cm": _ms.effective_depth_cm,
+                        "slab_type_lbl": _type_reverse_sb.get(_ms_tp, "Maciça 1D"),
+                        "level": getattr(_ms, "level", "piso"),
+                        "direction": getattr(_ms, "direction", "x") or "x",
+                        "gk_kn_m2": _ms.gk_kn_m2, "qk_kn_m2": _ms.qk_kn_m2,
+                        "catalog_id": getattr(_ms, "catalog_id", None),
+                        "rev_kn_m2": getattr(_ms, "rev_kn_m2", 1.0),
+                        "div_kn_m2": getattr(_ms, "div_kn_m2", 1.5),
+                        "psi1": getattr(_ms, "psi1", 0.3),
+                    }
+                    st.session_state.manual_slabs.pop(_i)
+                    st.rerun()
+                if _cc.button("🗑", key=f"del_slab_{_i}", help="Apagar"):
+                    st.session_state.manual_slabs.pop(_i)
+                    st.rerun()
+    st.divider()
+
     _alig_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) == "ribbed"]
     _render_slab_tab(_alig_slabs, "alig", show_catalog=True)
 
@@ -2856,8 +2399,42 @@ with tab_esforcos:
 
 # ── Paredes estruturais ───────────────────────────────────────────────────────
 with tab_paredes:
+    # ── Dados de entrada ──────────────────────────────────────────────────────
+    st.subheader("Dados de entrada")
+    with st.expander(f"Paredes estruturais ({len(st.session_state.manual_walls)})", expanded=(len(st.session_state.manual_walls) == 0)):
+        _pw = st.session_state.get("_prefill_wall", {})
+        with st.form("form_wall", clear_on_submit=True):
+            wc1, wc2 = st.columns(2)
+            w_id  = wc1.text_input("ID", value=_pw.get("id", "W1"))
+            w_len = wc1.number_input("Comprimento (m)", value=float(_pw.get("length_m", 3.0)), min_value=0.5, step=0.5)
+            w_thk = wc1.number_input("Espessura (cm)", value=int(_pw.get("thickness_cm", 20)), min_value=10, step=5)
+            w_h   = wc1.number_input("Altura (m)", value=float(_pw.get("height_m", 3.0)), min_value=1.0, step=0.5)
+            w_ned = wc2.number_input("NEd (kN)", value=float(_pw.get("ned_kn", 500.0)), min_value=0.0, step=50.0)
+            w_ved = wc2.number_input("VEd horizontal (kN)", value=float(_pw.get("ved_kn", 50.0)), min_value=0.0, step=10.0)
+            w_med = wc2.number_input("MEd base (kNm)", value=float(_pw.get("med_knm", 150.0)), min_value=0.0, step=10.0)
+            _w_lbl = "✅ Atualizar parede" if _pw else "➕ Adicionar parede"
+            if st.form_submit_button(_w_lbl):
+                st.session_state.manual_walls.append(
+                    ShearWall(w_id, 0.0, 0.0, w_len, w_thk, w_h, w_ned, w_ved, w_med))
+                st.session_state.pop("_prefill_wall", None)
+                st.rerun()
+        if st.session_state.manual_walls:
+            for _i, ww in enumerate(st.session_state.manual_walls):
+                _ca, _cb, _cc = st.columns([5, 1, 1])
+                _ca.caption(f"{ww.id}: L={ww.length_m}m  e={ww.thickness_cm}cm  N={ww.ned_kn}kN")
+                if _cb.button("✏️", key=f"edit_wall_{_i}", help="Editar"):
+                    st.session_state["_prefill_wall"] = {"id": ww.id, "length_m": ww.length_m,
+                        "thickness_cm": ww.thickness_cm, "height_m": ww.height_m,
+                        "ned_kn": ww.ned_kn, "ved_kn": ww.ved_kn, "med_knm": ww.med_knm}
+                    st.session_state.manual_walls.pop(_i)
+                    st.rerun()
+                if _cc.button("🗑", key=f"del_wall_{_i}", help="Apagar"):
+                    st.session_state.manual_walls.pop(_i)
+                    st.rerun()
+    st.divider()
+
     if not p.walls:
-        st.info("Sem paredes estruturais no projeto. Adiciona na barra lateral.")
+        st.info("Sem paredes estruturais calculadas. Adiciona acima e clica ▶ Correr cálculo.")
     else:
         rows = []
         for w in p.walls:
@@ -2895,10 +2472,81 @@ with tab_paredes:
 
 # ── Muros de betão ───────────────────────────────────────────────────────────
 with tab_muros:
+    # ── Dados de entrada ──────────────────────────────────────────────────────
+    st.subheader("Dados de entrada")
+    with st.expander(f"Muros de betão ({len(st.session_state.manual_retaining_walls)})", expanded=(len(st.session_state.manual_retaining_walls) == 0)):
+        _prw = st.session_state.get("_prefill_rw", {})
+        _rw_tipo_opts = ["Suporte de terras", "Piscina"]
+        _rw_lado_opts = ["Direito", "Esquerdo"]
+        _rw_tipo_idx  = 1 if _prw.get("wall_type") == "piscina" else 0
+        _rw_lado_idx  = 1 if _prw.get("load_side", "direito") == "esquerdo" else 0
+        with st.form("form_rw", clear_on_submit=True):
+            rw1, rw2 = st.columns(2)
+            rw_id   = rw1.text_input("ID", value=_prw.get("id", "M1"))
+            rw_h    = rw1.number_input("Altura do muro (m)", value=float(_prw.get("height_m", 2.5)),
+                                        min_value=0.5, step=0.25, help="Altura do fuste, sem contar com a sapata")
+            rw_st   = rw1.number_input("Espessura do fuste (cm)", value=int(_prw.get("stem_thickness_cm", 25)), min_value=15, step=5)
+            rw_tipo = rw1.selectbox("Tipo", _rw_tipo_opts, index=_rw_tipo_idx)
+            rw_lado = rw2.selectbox("Lado das terras/água", _rw_lado_opts, index=_rw_lado_idx)
+            rw_gam  = rw2.number_input("γ solo (kN/m³)", value=float(_prw.get("gamma_soil_kn_m3", 18.0)), min_value=14.0, step=1.0)
+            rw_phi  = rw2.number_input("φ (°)", value=int(_prw.get("phi_deg", 30)), min_value=15, max_value=45, step=1)
+            rw_q    = rw2.number_input("Sobrecarga (kN/m²)", value=float(_prw.get("surcharge_kn_m2", 5.0)), min_value=0.0, step=1.0)
+            _rw_lbl = "✅ Atualizar muro" if _prw else "➕ Adicionar muro"
+            if st.form_submit_button(_rw_lbl):
+                _rw_H  = rw_h
+                _rw_st_m = rw_st / 100.0
+                _rw_bw   = round(0.60 * _rw_H, 2)
+                _rw_ht   = float(max(25, round(0.10 * _rw_H * 100 / 5) * 5))
+                _rw_heel = round(0.40 * _rw_H, 2)
+                _rw_toe  = max(0.10, round(_rw_bw - _rw_heel - _rw_st_m, 2))
+                st.session_state.manual_retaining_walls.append(
+                    RetainingWall(rw_id, _rw_H, rw_st, _rw_bw, _rw_ht, _rw_heel, _rw_toe,
+                                  rw_gam, float(rw_phi), rw_q,
+                                  "piscina" if rw_tipo == "Piscina" else "terras",
+                                  rw_lado.lower()))
+                st.session_state.pop("_prefill_rw", None)
+                st.rerun()
+        if st.session_state.manual_retaining_walls:
+            _rw_slab_opts = [s.id for s in st.session_state.manual_slabs]
+            _wsmap = st.session_state.get("wall_slab_map", {})
+            for _i, rw in enumerate(st.session_state.manual_retaining_walls):
+                _rw_tipo_lbl = "piscina" if getattr(rw, 'wall_type', 'terras') == 'piscina' else "terras"
+                _ca, _cb, _cc = st.columns([5, 1, 1])
+                _ca.caption(f"{rw.id}: H={rw.height_m}m  e={rw.stem_thickness_cm}cm  "
+                            f"B={rw.base_width_m:.2f}m  [{_rw_tipo_lbl}]")
+                if _cb.button("✏️", key=f"edit_rw_{_i}", help="Editar"):
+                    st.session_state["_prefill_rw"] = {"id": rw.id, "height_m": rw.height_m,
+                        "stem_thickness_cm": rw.stem_thickness_cm, "gamma_soil_kn_m3": rw.gamma_soil_kn_m3,
+                        "phi_deg": rw.phi_deg, "surcharge_kn_m2": rw.surcharge_kn_m2,
+                        "wall_type": getattr(rw, "wall_type", "terras"),
+                        "load_side": getattr(rw, "load_side", "direito")}
+                    st.session_state.manual_retaining_walls.pop(_i)
+                    st.rerun()
+                if _cc.button("🗑", key=f"del_rw_{_i}", help="Apagar"):
+                    st.session_state.manual_retaining_walls.pop(_i)
+                    st.rerun()
+                _ws_entry = _wsmap.get(rw.id, {})
+                if isinstance(_ws_entry, list):
+                    _ws_entry = {"direito": _ws_entry, "esquerdo": []}
+                _ws_dir_cur = [s for s in _ws_entry.get("direito", []) if s in _rw_slab_opts]
+                _ws_esq_cur = [s for s in _ws_entry.get("esquerdo", []) if s in _rw_slab_opts]
+                _wsd, _wse  = st.columns(2)
+                _ws_dir_sel = _wsd.multiselect(
+                    f"Lajes lado dir. → {rw.id}", options=_rw_slab_opts, default=_ws_dir_cur,
+                    key=f"wsmap_dir_{rw.id}_{_i}", help="Lajes que apoiam no lado direito do muro",
+                )
+                _ws_esq_sel = _wse.multiselect(
+                    f"Lajes lado esq. → {rw.id}", options=_rw_slab_opts, default=_ws_esq_cur,
+                    key=f"wsmap_esq_{rw.id}_{_i}", help="Lajes que apoiam no lado esquerdo do muro",
+                )
+                _wsmap[rw.id] = {"direito": _ws_dir_sel, "esquerdo": _ws_esq_sel}
+            st.session_state.wall_slab_map = _wsmap
+    st.divider()
+
     rws = getattr(p, 'retaining_walls', [])
     cfs = getattr(p, 'continuous_footings', [])
     if not rws:
-        st.info("Sem muros de betão no projeto. Adiciona na barra lateral.")
+        st.info("Sem muros de betão calculados. Adiciona acima e clica ▶ Correr cálculo.")
     else:
         st.subheader("Muros de suporte em consola")
         rows = []
@@ -2946,8 +2594,46 @@ with tab_muros:
 
 # ── Lajes fungiformes ─────────────────────────────────────────────────────────
 with tab_fungi:
+    # ── Dados de entrada ──────────────────────────────────────────────────────
+    st.subheader("Dados de entrada")
+    with st.expander(f"Lajes fungiformes ({len(st.session_state.manual_flat_slabs)})", expanded=(len(st.session_state.manual_flat_slabs) == 0)):
+        _pfs = st.session_state.get("_prefill_fs", {})
+        _fs_panel_opts = ["interior", "edge", "corner"]
+        with st.form("form_fs", clear_on_submit=True):
+            fc1, fc2 = st.columns(2)
+            fs_id   = fc1.text_input("ID", value=_pfs.get("id", "LF1"))
+            fs_lx   = fc1.number_input("Lx — vão curto (m)", value=float(_pfs.get("lx_m", 5.0)), min_value=1.0, step=0.5)
+            fs_ly   = fc1.number_input("Ly — vão longo (m)", value=float(_pfs.get("ly_m", 6.0)), min_value=1.0, step=0.5)
+            fs_thk  = fc1.number_input("Espessura (cm)", value=int(_pfs.get("thickness_cm", 22)), min_value=12, step=2)
+            fs_gk   = fc2.number_input("gk (kN/m²)", value=float(_pfs.get("gk_kn_m2", 5.0)), min_value=0.0, step=0.5)
+            fs_qk   = fc2.number_input("qk (kN/m²)", value=float(_pfs.get("qk_kn_m2", 3.0)), min_value=0.0, step=0.5)
+            fs_cw   = fc2.number_input("Lado pilar (cm)", value=int(_pfs.get("col_width_cm", 30)), min_value=15, step=5)
+            _fs_pt_idx = _fs_panel_opts.index(_pfs.get("panel_type", "interior")) if _pfs.get("panel_type") in _fs_panel_opts else 0
+            fs_type = fc2.selectbox("Tipo painel", _fs_panel_opts, index=_fs_pt_idx)
+            _fs_lbl = "✅ Atualizar" if _pfs else "➕ Adicionar laje fungiforme"
+            if st.form_submit_button(_fs_lbl):
+                d_cm = fs_thk - 3.0
+                st.session_state.manual_flat_slabs.append(
+                    FlatSlab(fs_id, fs_lx, fs_ly, fs_thk, d_cm, fs_gk, fs_qk, fs_cw, fs_type))
+                st.session_state.pop("_prefill_fs", None)
+                st.rerun()
+        if st.session_state.manual_flat_slabs:
+            for _i, fs in enumerate(st.session_state.manual_flat_slabs):
+                _ca, _cb, _cc = st.columns([5, 1, 1])
+                _ca.caption(f"{fs.id}: {fs.lx_m}×{fs.ly_m}m  h={fs.thickness_cm}cm  gk={fs.gk_kn_m2}")
+                if _cb.button("✏️", key=f"edit_fs_{_i}", help="Editar"):
+                    st.session_state["_prefill_fs"] = {"id": fs.id, "lx_m": fs.lx_m, "ly_m": fs.ly_m,
+                        "thickness_cm": fs.thickness_cm, "gk_kn_m2": fs.gk_kn_m2,
+                        "qk_kn_m2": fs.qk_kn_m2, "col_width_cm": fs.col_width_cm, "panel_type": fs.panel_type}
+                    st.session_state.manual_flat_slabs.pop(_i)
+                    st.rerun()
+                if _cc.button("🗑", key=f"del_fs_{_i}", help="Apagar"):
+                    st.session_state.manual_flat_slabs.pop(_i)
+                    st.rerun()
+    st.divider()
+
     if not p.flat_slabs:
-        st.info("Sem lajes fungiformes no projeto. Adiciona na barra lateral.")
+        st.info("Sem lajes fungiformes calculadas. Adiciona acima e clica ▶ Correr cálculo.")
     else:
         rows = []
         for fs in p.flat_slabs:
@@ -2978,8 +2664,43 @@ with tab_fungi:
 
 # ── Escadas ───────────────────────────────────────────────────────────────────
 with tab_esc:
+    # ── Dados de entrada ──────────────────────────────────────────────────────
+    st.subheader("Dados de entrada")
+    with st.expander(f"Escadas ({len(st.session_state.manual_stairs)})", expanded=(len(st.session_state.manual_stairs) == 0)):
+        _pst = st.session_state.get("_prefill_stair", {})
+        with st.form("form_stair", clear_on_submit=True):
+            sc1, sc2 = st.columns(2)
+            st_id  = sc1.text_input("ID", value=_pst.get("id", "E1"))
+            st_lh  = sc1.number_input("Projecção horiz. (m)", value=float(_pst.get("span_h_m", 3.5)), min_value=0.5, step=0.25)
+            st_hv  = sc1.number_input("Altura total (m)", value=float(_pst.get("rise_m", 1.5)), min_value=0.2, step=0.1)
+            st_w   = sc1.number_input("Largura (m)", value=float(_pst.get("width_m", 1.2)), min_value=0.5, step=0.1)
+            st_thk = sc2.number_input("Espessura laje (cm)", value=int(_pst.get("thickness_cm", 14)), min_value=8, step=1)
+            st_gk  = sc2.number_input("gk acabamentos (kN/m²)", value=float(_pst.get("gk_kn_m2", 1.5)), min_value=0.0, step=0.5)
+            st_qk  = sc2.number_input("qk (kN/m²)", value=float(_pst.get("qk_kn_m2", 3.0)), min_value=0.0, step=0.5)
+            _st_lbl = "✅ Atualizar" if _pst else "➕ Adicionar escada"
+            if st.form_submit_button(_st_lbl):
+                d_cm = st_thk - 2.0
+                st.session_state.manual_stairs.append(
+                    StairSlab(st_id, st_lh, st_hv, st_w, st_thk, d_cm, st_gk, st_qk))
+                st.session_state.pop("_prefill_stair", None)
+                st.rerun()
+        if st.session_state.manual_stairs:
+            for _i, ss in enumerate(st.session_state.manual_stairs):
+                _ca, _cb, _cc = st.columns([5, 1, 1])
+                _ca.caption(f"{ss.id}: Lh={ss.span_h_m}m  Hv={ss.rise_m}m  h={ss.thickness_cm}cm")
+                if _cb.button("✏️", key=f"edit_stair_{_i}", help="Editar"):
+                    st.session_state["_prefill_stair"] = {"id": ss.id, "span_h_m": ss.span_h_m,
+                        "rise_m": ss.rise_m, "width_m": ss.width_m, "thickness_cm": ss.thickness_cm,
+                        "gk_kn_m2": ss.gk_kn_m2, "qk_kn_m2": ss.qk_kn_m2}
+                    st.session_state.manual_stairs.pop(_i)
+                    st.rerun()
+                if _cc.button("🗑", key=f"del_stair_{_i}", help="Apagar"):
+                    st.session_state.manual_stairs.pop(_i)
+                    st.rerun()
+    st.divider()
+
     if not p.stairs:
-        st.info("Sem escadas no projeto. Adiciona na barra lateral.")
+        st.info("Sem escadas calculadas. Adiciona acima e clica ▶ Correr cálculo.")
     else:
         rows = []
         for ss in p.stairs:
