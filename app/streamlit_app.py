@@ -1126,11 +1126,12 @@ if run_btn:
             )
 
             lcfg = st.session_state.get("load_cfg") or {}
-            # Merge manually added slabs (avoid duplicates by ID)
+            # Merge manually added slabs — usar CÓPIAS para proteger manual_slabs do pipeline
+            import copy as _copy
             _existing_ids = {s.id for s in slabs}
             for _ms in st.session_state.get("manual_slabs", []):
                 if _ms.id not in _existing_ids:
-                    slabs.append(_ms)
+                    slabs.append(_copy.deepcopy(_ms))
                     _existing_ids.add(_ms.id)
             # Apply pórtico→slab assignments: update slab.support_beam_ids and beam.supported_slab_ids
             _psmap = st.session_state.get("portico_slab_map", {})
