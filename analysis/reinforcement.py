@@ -19,13 +19,15 @@ class ReinforcementHelper:
         return max(abs(moment_knm)*1_000_000.0/(fyd_mpa*z_mm)/100.0, as_min_cm2)
     @classmethod
     def suggest_beam_bars(cls, required_as_cm2):
+        # Mínimo Ø12 para armadura longitudinal de vigas (boa prática / durabilidade)
+        min_as = max(required_as_cm2, 2 * cls.bar_area_cm2(12))
         best=None
-        for dia in [8,10,12,16,20]:
+        for dia in [12,16,20,25]:
             a=cls.bar_area_cm2(dia)
             for n in range(2,9):
                 prov=n*a
-                if prov>=required_as_cm2:
-                    cand=(prov-required_as_cm2,n,dia,prov)
+                if prov>=min_as:
+                    cand=(prov-min_as,n,dia,prov)
                     if best is None or cand<best: best=cand
                     break
         if best is None: return BarSuggestion("dimensionar manualmente", required_as_cm2)
