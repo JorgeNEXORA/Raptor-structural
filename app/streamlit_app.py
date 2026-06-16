@@ -693,7 +693,10 @@ _ab_snap = {k: st.session_state.get(k) for k in ["manual_slabs","manual_retainin
     "manual_flat_slabs","manual_stairs","col_config","cols_in_cont_footing",
     "portico_slab_map","portico_tramos","beam_overrides","project_info"]}
 _sav_bytes = _sav_ab(_ab_snap)
-_requ_hdr = (_pi_hdr.get("requerente") or "Projeto").strip()
+# Nome do ficheiro: lido do session_state (preenchido pela input abaixo do menu)
+_requ_hdr = (_pi_hdr.get("requerente") or "").strip()
+_save_fname = st.session_state.get("_proj_filename", _requ_hdr)
+_save_clean = (_save_fname or "sem_nome").replace(" ", "_").replace("/", "-")
 
 # Logo + RAPTOR + File menu items + user profile in one row
 _mh_logo, _mh_title, _mh_new, _mh_open, _mh_save, _mh_saveas, _mh_dxf, _mh_rel, _mh_imp, _mh_space, _mh_user = st.columns(
@@ -710,15 +713,26 @@ with _mh_new:
         st.session_state.project_info = None
         st.rerun()
 with _mh_open:
-    st.button("Open", use_container_width=True, disabled=True, help="Usa '📂 Abrir projeto / inputs' na sidebar")
+    if st.button("Open", use_container_width=True, help="Abrir ficheiro .raptor"):
+        st.session_state["_show_open_upload"] = not st.session_state.get("_show_open_upload", False)
+        st.rerun()
 with _mh_save:
-    st.download_button("Save", data=_sav_bytes,
-        file_name=f"{_requ_hdr.replace(' ','_')}.raptor",
-        mime="application/json", use_container_width=True)
+    if _save_clean and _save_clean != "sem_nome":
+        st.download_button("Save", data=_sav_bytes,
+            file_name=f"{_save_clean}.raptor",
+            mime="application/json", use_container_width=True)
+    else:
+        if st.button("Save", use_container_width=True, help="Define um nome no campo abaixo primeiro"):
+            st.session_state["_focus_filename"] = True
+            st.rerun()
 with _mh_saveas:
-    st.download_button("Save as", data=_sav_bytes,
-        file_name=f"{_requ_hdr.replace(' ','_')}_v2.raptor",
-        mime="application/json", use_container_width=True)
+    if _save_clean and _save_clean != "sem_nome":
+        st.download_button("Save as", data=_sav_bytes,
+            file_name=f"{_save_clean}.raptor",
+            mime="application/json", use_container_width=True)
+    else:
+        st.button("Save as", use_container_width=True, disabled=True,
+                  help="Define um nome no campo abaixo primeiro")
 with _mh_dxf:
     if st.session_state.get("dxf_bytes"):
         st.download_button("DXF", data=st.session_state.dxf_bytes,
@@ -749,7 +763,79 @@ with _mh_user:
                   display:flex;align-items:center;justify-content:center;
                   color:#c9a84c;font-size:0.75rem;font-weight:700;flex-shrink:0">{_initials}</div>
     </div>""", unsafe_allow_html=True)
-st.markdown("<div style='height:1px;background:#1e2836;margin:0 0 10px 0'></div>", unsafe_allow_html=True)
+st.markdown("<div style='height:1px;background:#1e2836;margin:0 0 6px 0'></div>", unsafe_allow_html=True)
+
+# ── Nome do ficheiro + Open dialog ───────────────────────────────────────────
+_fn_col, _fn_hint = st.columns([3, 2])
+with _fn_col:
+    _fn_new = st.text_input(
+        "nome_ficheiro",
+        value=st.session_state.get("_proj_filename", _requ_hdr),
+        placeholder="Nome do projeto (ex: Moradia Silva)…",
+        label_visibility="collapsed",
+        key="_proj_filename",
+    )
+with _fn_hint:
+    if not st.session_state.get("_proj_filename"):
+        st.caption("⚠️ Define um nome antes de guardar")
+    else:
+        _fn_clean = st.session_state["_proj_filename"].replace(" ", "_").replace("/", "-")
+        st.caption(f"💾 guardará como **{_fn_clean}.raptor**")
+
+# Atualizar _save_clean com o valor actual do input (pode ter mudado neste render)
+_save_fname = st.session_state.get("_proj_filename", "") or ""
+_save_clean  = _save_fname.replace(" ", "_").replace("/", "-") if _save_fname else "sem_nome"
+
+# Open dialog — file uploader inline
+if st.session_state.get("_show_open_upload"):
+    with st.container():
+        from core.persistence import load_inputs as _load_inp_hdr
+        _up_col, _up_close = st.columns([5, 1])
+        with _up_close:
+            if st.button("✕", key="close_open_upload", help="Fechar"):
+                st.session_state["_show_open_upload"] = False
+                st.rerun()
+        with _up_col:
+            raptor_upload_hdr = st.file_uploader(
+                "Abrir ficheiro .raptor", type=["raptor", "json"],
+                key="raptor_upload_hdr")
+        if raptor_upload_hdr is not None:
+            _up_uid_h = f"{raptor_upload_hdr.name}_{raptor_upload_hdr.size}"
+            if st.session_state.get("_raptor_loaded_id_hdr") != _up_uid_h:
+                try:
+                    _raw_b = raptor_upload_hdr.read()
+                    _raw_j = __import__("json").loads(_raw_b.decode("utf-8"))
+                    if _raw_j.get("raptor_version", "").startswith("inputs_"):
+                        _inp_l = _load_inp_hdr(_raw_b)
+                        for _ik, _iv in _inp_l.items():
+                            st.session_state[_ik] = _iv
+                        st.session_state["_raptor_loaded_id_hdr"] = _up_uid_h
+                        st.session_state["_show_open_upload"] = False
+                        st.success("Inputs restaurados.")
+                        st.rerun()
+                    else:
+                        from core.persistence import load_project as _load_proj_hdr
+                        _lp = _load_proj_hdr(_raw_b)
+                        st.session_state.project = _lp
+                        st.session_state.drawings_ready = False
+                        st.session_state.manual_retaining_walls = list(_lp.retaining_walls or [])
+                        st.session_state.manual_slabs = [s for s in (_lp.slabs or [])
+                                                          if not getattr(s, "polygon_points", None)]
+                        st.session_state.manual_flat_slabs = list(getattr(_lp, "flat_slabs", []) or [])
+                        st.session_state.manual_stairs    = list(getattr(_lp, "stairs", []) or [])
+                        st.session_state.manual_walls     = list(getattr(_lp, "walls", []) or [])
+                        _ss_s = _raw_j.get("session_state", {})
+                        for _sk in ("col_config","cols_in_cont_footing","portico_slab_map",
+                                    "portico_tramos","wall_slab_map","beam_overrides"):
+                            if _ss_s.get(_sk) is not None:
+                                st.session_state[_sk] = _ss_s[_sk]
+                        st.session_state["_raptor_loaded_id_hdr"] = _up_uid_h
+                        st.session_state["_show_open_upload"] = False
+                        st.session_state["_proj_filename"] = _lp.name or ""
+                        st.success(f"Projeto '{_lp.name}' carregado.")
+                        st.rerun()
+                except Exception as _le_h:
+                    st.error(f"Erro: {_le_h}")
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -902,59 +988,6 @@ with st.sidebar:
                     "tipo_obra":   _dt_tipo,
                 }
                 st.rerun()
-    # ── Abrir projeto / inputs guardado ─────────────────────────────────────
-    st.divider()
-    from core.persistence import load_inputs as _load_inp
-    with st.expander("📂 Abrir projeto / inputs"):
-        st.caption("Carrega um ficheiro .raptor (inputs ou projeto completo).")
-        raptor_upload = st.file_uploader("Ficheiro .raptor", type=["raptor", "json"],
-                                         key="raptor_upload", label_visibility="collapsed")
-        if raptor_upload is not None:
-            _up_uid = f"{raptor_upload.name}_{raptor_upload.size}"
-            if st.session_state.get("_raptor_loaded_id") != _up_uid:
-                try:
-                    _raw_bytes = raptor_upload.read()
-                    _raw_json  = __import__("json").loads(_raw_bytes.decode("utf-8"))
-                    if _raw_json.get("raptor_version", "").startswith("inputs_"):
-                        _inp_loaded = _load_inp(_raw_bytes)
-                        for _ik, _iv in _inp_loaded.items():
-                            st.session_state[_ik] = _iv
-                        st.session_state["_raptor_loaded_id"] = _up_uid
-                        st.success("Inputs restaurados com sucesso.")
-                        st.rerun()
-                    else:
-                        from core.persistence import load_project as _load_proj
-                        _loaded = _load_proj(_raw_bytes)
-                        st.session_state.project = _loaded
-                        st.session_state.drawings_ready = False
-                        st.session_state.manual_retaining_walls = list(_loaded.retaining_walls or [])
-                        st.session_state.manual_slabs = [s for s in (_loaded.slabs or [])
-                                                         if not getattr(s, 'polygon_points', None)]
-                        st.session_state.manual_flat_slabs = list(getattr(_loaded, 'flat_slabs', []) or [])
-                        st.session_state.manual_stairs    = list(getattr(_loaded, 'stairs', []) or [])
-                        st.session_state.manual_walls     = list(getattr(_loaded, 'walls', []) or [])
-                        _ss_saved = _raw_json.get("session_state", {})
-                        if _ss_saved.get("col_config"):
-                            st.session_state.col_config = _ss_saved["col_config"]
-                        if _ss_saved.get("cols_in_cont_footing"):
-                            st.session_state.cols_in_cont_footing = _ss_saved["cols_in_cont_footing"]
-                        st.session_state.portico_slab_map = _ss_saved.get("portico_slab_map", {})
-                        st.session_state.portico_tramos   = _ss_saved.get("portico_tramos", [])
-                        st.session_state.wall_slab_map    = _ss_saved.get("wall_slab_map", {})
-                        st.session_state.beam_overrides   = _ss_saved.get("beam_overrides", {})
-                        st.session_state["_raptor_loaded_id"] = _up_uid
-                        _n_rw = len(st.session_state.manual_retaining_walls)
-                        _n_sl = len(st.session_state.manual_slabs)
-                        st.success(f"Projeto '{_loaded.name}' carregado — {_n_rw} muros, {_n_sl} lajes.")
-                        st.rerun()
-                except Exception as _le:
-                    st.error(f"Erro ao abrir ficheiro: {_le}")
-            else:
-                _proj_loaded = st.session_state.get("project")
-                if _proj_loaded:
-                    _n_rw = len(st.session_state.get("manual_retaining_walls", []))
-                    _n_sl = len(st.session_state.get("manual_slabs", []))
-                    st.success(f"'{_proj_loaded.name}' — {_n_rw} muros, {_n_sl} lajes")
 
 
 # ── Variáveis antes removidas da sidebar ─────────────────────────────────────
@@ -1275,14 +1308,6 @@ with _act_mid:
             st.session_state["_trigger_opt"] = True
             st.rerun()
 with _act_right:
-    from core.persistence import save_inputs as _save_inp2
-    _inp_keys2 = ["manual_slabs", "manual_retaining_walls", "manual_flat_slabs",
-                  "manual_stairs", "col_config", "cols_in_cont_footing",
-                  "portico_slab_map", "portico_tramos", "beam_overrides", "project_info"]
-    _inp_snap2 = {k: st.session_state.get(k) for k in _inp_keys2}
-    _inp_bytes2 = _save_inp2(_inp_snap2)
-    st.download_button("💾 Guardar inputs", data=_inp_bytes2, file_name="inputs.raptor",
-                       mime="application/json", use_container_width=True, key="act_save")
     if st.session_state.project:
         if st.button("📄  Relatório DOCX", use_container_width=True, key="act_docx"):
             st.session_state["_trigger_docx"] = True
