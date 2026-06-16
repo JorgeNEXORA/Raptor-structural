@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as _stc
 import sys
 import os
 import io
@@ -697,6 +698,24 @@ _sav_bytes = _sav_ab(_ab_snap)
 _requ_hdr = (_pi_hdr.get("requerente") or "").strip()
 _save_fname = st.session_state.get("_proj_filename", _requ_hdr)
 _save_clean = (_save_fname or "sem_nome").replace(" ", "_").replace("/", "-")
+
+# ── Aviso de saída sem gravar ─────────────────────────────────────────────────
+_has_unsaved = bool(st.session_state.project or st.session_state.manual_slabs)
+_stc.html(f"""
+<script>
+(function() {{
+  var p = window.parent;
+  var has = {'true' if _has_unsaved else 'false'};
+  if (has && !p._raptorUnload) {{
+    p._raptorUnload = function(e) {{ e.preventDefault(); e.returnValue = ''; return ''; }};
+    p.addEventListener('beforeunload', p._raptorUnload);
+  }} else if (!has && p._raptorUnload) {{
+    p.removeEventListener('beforeunload', p._raptorUnload);
+    p._raptorUnload = null;
+  }}
+}})();
+</script>
+""", height=0)
 
 # Logo + RAPTOR + File menu items + user profile in one row
 _mh_logo, _mh_title, _mh_new, _mh_open, _mh_save, _mh_saveas, _mh_dxf, _mh_rel, _mh_imp, _mh_space, _mh_user = st.columns(
@@ -2151,7 +2170,7 @@ with tab_lajes_alig:
         "Varanda":   (_lcfg_sb.get("gk_var",  5.50), _lcfg_sb.get("qk_var",  3.0)),
         "Cobertura": (_lcfg_sb.get("gk_cob",  5.50), _lcfg_sb.get("qk_cob",  1.0)),
     }
-    _sl_type_opts = ["Aligeirada", "Maciça 1D", "Maciça 2D", "Consola"]
+    _sl_type_opts = ["Aligeirada"]
     _sl_lvl_opts  = ["piso", "cobertura"]
     _sl_dir_opts  = ["X", "Y"]
     _sl_zona_opts = list(_zona_map_sb.keys())
@@ -2191,29 +2210,35 @@ with tab_lajes_alig:
     _is_editing = bool(_pslab)
     _form_label = f"✏️ Editar laje {_pslab.get('id','')}" if _is_editing else "➕ Adicionar laje"
     with st.expander(_form_label, expanded=_is_editing or len(st.session_state.manual_slabs) == 0):
-        _sl_type_idx  = _sl_type_opts.index(_pslab["slab_type_lbl"]) if _pslab.get("slab_type_lbl") in _sl_type_opts else 1
         _sl_lvl_idx   = _sl_lvl_opts.index(_pslab["level"]) if _pslab.get("level") in _sl_lvl_opts else 0
         _sl_dir_idx   = _sl_dir_opts.index(_pslab.get("direction", "x").upper()) if _pslab.get("direction", "x").upper() in _sl_dir_opts else 0
         _sl_cat_def   = _pslab.get("catalog_id") or "(automático)"
         _sl_cat_idx   = _cat_sb_opts.index(_sl_cat_def) if _sl_cat_def in _cat_sb_opts else 0
+        # Reinicia session_state dos widgets quando muda de editar para novo
+        _form_mode_key = f"_slab_form_mode_{'edit' if _is_editing else 'new'}_{_pslab.get('id','')}"
+        if st.session_state.get("_slab_form_last_mode") != _form_mode_key:
+            for _fk in ("sf_lvl","sf_dir","sf_zona","sf_rev","sf_div","sf_psi1","sf_cat",
+                        "sf_id","sf_span","sf_thk","sf_d"):
+                st.session_state.pop(_fk, None)
+            st.session_state["_slab_form_last_mode"] = _form_mode_key
         with st.form("form_add_slab_sb", clear_on_submit=True):
+            _sl_type_sb = "Aligeirada"  # fixo neste tab
             _sb1, _sb2 = st.columns(2)
-            _sl_id_sb   = _sb1.text_input("ID", value=_pslab.get("id", f"LP{len(st.session_state.manual_slabs)+1}"))
-            _sl_span_sb = _sb1.number_input("Vão (m)", value=float(_pslab.get("span_m", 4.0)), min_value=0.5, step=0.25)
-            _sl_thk_sb  = _sb1.number_input("Esp. (cm)", value=int(_pslab.get("thickness_cm", 25)), min_value=8, max_value=50, step=1)
-            _sl_d_sb    = _sb1.number_input("d útil (cm)", value=int(_pslab.get("effective_depth_cm", 20)), min_value=5, max_value=45, step=1)
-            _sl_type_sb = _sb2.selectbox("Tipo", _sl_type_opts, index=_sl_type_idx)
-            _sl_lvl_sb  = _sb2.selectbox("Nível", _sl_lvl_opts, index=_sl_lvl_idx)
-            _sl_dir_sb  = _sb2.selectbox("Direção", _sl_dir_opts, index=_sl_dir_idx)
-            _sl_zona_sb = _sb2.selectbox("Zona (Qk)", _sl_zona_opts)
+            _sl_id_sb   = _sb1.text_input("ID", value=_pslab.get("id", f"LP{len(st.session_state.manual_slabs)+1}"), key="sf_id")
+            _sl_span_sb = _sb1.number_input("Vão (m)", value=float(_pslab.get("span_m", 4.0)), min_value=0.5, step=0.25, key="sf_span")
+            _sl_thk_sb  = _sb1.number_input("Esp. (cm)", value=int(_pslab.get("thickness_cm", 25)), min_value=8, max_value=50, step=1, key="sf_thk")
+            _sl_d_sb    = _sb1.number_input("d útil (cm)", value=int(_pslab.get("effective_depth_cm", 20)), min_value=5, max_value=45, step=1, key="sf_d")
+            _sl_lvl_sb  = _sb2.selectbox("Nível", _sl_lvl_opts, index=_sl_lvl_idx, key="sf_lvl")
+            _sl_dir_sb  = _sb2.selectbox("Direção", _sl_dir_opts, index=_sl_dir_idx, key="sf_dir")
+            _sl_zona_sb = _sb2.selectbox("Zona (Qk)", _sl_zona_opts, key="sf_zona")
             _sc1, _sc2, _sc3 = st.columns(3)
-            _sl_rev_sb  = _sc1.number_input("Rev. (kN/m²)", value=float(_pslab.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1, help="Revestimentos")
-            _sl_div_sb  = _sc2.number_input("Div. (kN/m²)", value=float(_pslab.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1, help="Divisórias")
+            _sl_rev_sb  = _sc1.number_input("Rev. (kN/m²)", value=float(_pslab.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1, help="Revestimentos", key="sf_rev")
+            _sl_div_sb  = _sc2.number_input("Div. (kN/m²)", value=float(_pslab.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1, help="Divisórias", key="sf_div")
             _sl_psi1_sb = _sc3.number_input("ψ₁", value=float(_pslab.get("psi1", 0.3)), min_value=0.0, max_value=1.0, step=0.1,
-                                             help="SLS quasi-permanente (0.30 habitável, 0.70 armazém)")
+                                             help="SLS quasi-permanente (0.30 habitável, 0.70 armazém)", key="sf_psi1")
             st.caption("🔄 Laje selecionada automaticamente pelo Pavineiva (PP do catálogo + Rev + Div)")
             _sl_cat_sb  = st.selectbox("Forçar laje (opcional)", _cat_sb_opts, index=_sl_cat_idx,
-                                        help="Deixa '(automático)' para o programa escolher a laje mais económica")
+                                        help="Deixa '(automático)' para o programa escolher a laje mais económica", key="sf_cat")
             _slab_lbl = "✅ Guardar alterações" if _is_editing else "➕ Adicionar laje"
             if st.form_submit_button(_slab_lbl):
                 _type_map_sb = {"Aligeirada": "ribbed", "Maciça 1D": "one_way",
