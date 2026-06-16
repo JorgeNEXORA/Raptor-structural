@@ -1370,39 +1370,40 @@ if st.session_state.project is None:
           <div style="color:#c9a84c;font-size:0.75rem;letter-spacing:.06em;margin:6px 0 4px">3. CALCULAR</div>
           <div style="color:#555;font-size:0.7rem">Clica ▶ Correr cálculo<br>na barra de acções</div>
         </div>""", unsafe_allow_html=True)
-    st.stop()
+    st.divider()
 
-p: Project = st.session_state.project
+p: Project = st.session_state.project  # pode ser None antes do 1º cálculo
 
-# ── Recalculate scores inline (immune to module cache) ────────────────────
-def _uls_beam(b):
-    r = b.result
-    if r is None: return 0.0
-    bend  = getattr(r, "bending_utilization", 0.0)
-    shear = min(getattr(r, "shear_utilization", 0.0), 1.0)  # cap: stirrups ≠ collapse
-    return max(bend, shear)
+# ── Recalculate scores (só quando há projeto calculado) ────────────────────
+scores = {}
+if p:
+    def _uls_beam(b):
+        r = b.result
+        if r is None: return 0.0
+        bend  = getattr(r, "bending_utilization", 0.0)
+        shear = min(getattr(r, "shear_utilization", 0.0), 1.0)
+        return max(bend, shear)
 
-def _score(worst):
-    return round(max(0.0, min(1.0, 1.0 - max(0.0, worst - 0.20))), 2)
+    def _score(worst):
+        return round(max(0.0, min(1.0, 1.0 - max(0.0, worst - 0.20))), 2)
 
-_b = [_uls_beam(b) for b in p.beams if b.result] or [0.0]
-_c = [max(getattr(c.result,"utilization",0.0), 0.0) for c in p.columns if c.result] or [0.0]
-_f = [max(getattr(f.result,"soil_utilization",0.0), getattr(f.result,"punching_utilization",0.0))
-      for f in p.footings if f.result] or [0.0]
-_els = ([max(getattr(b.result,"deflection_utilization",0.0), getattr(b.result,"crack_utilization",0.0))
-         for b in p.beams if b.result]
-      + [max(getattr(s.result,"deflection_utilization",0.0), getattr(s.result,"crack_utilization",0.0))
-         for s in p.slabs if s.result]) or [0.0]
+    _b = [_uls_beam(b) for b in p.beams if b.result] or [0.0]
+    _c = [max(getattr(c.result,"utilization",0.0), 0.0) for c in p.columns if c.result] or [0.0]
+    _f = [max(getattr(f.result,"soil_utilization",0.0), getattr(f.result,"punching_utilization",0.0))
+          for f in p.footings if f.result] or [0.0]
+    _els = ([max(getattr(b.result,"deflection_utilization",0.0), getattr(b.result,"crack_utilization",0.0))
+             for b in p.beams if b.result]
+          + [max(getattr(s.result,"deflection_utilization",0.0), getattr(s.result,"crack_utilization",0.0))
+             for s in p.slabs if s.result]) or [0.0]
 
-scores = {
-    "seguranca_uls": _score(max(max(_b), max(_c), max(_f))),
-    "servico_els":   _score(max(_els)),
-    "fundacoes":     _score(max(_f)),
-}
-p.project_scores = scores
+    scores = {
+        "seguranca_uls": _score(max(max(_b), max(_c), max(_f))),
+        "servico_els":   _score(max(_els)),
+        "fundacoes":     _score(max(_f)),
+    }
+    p.project_scores = scores
 
-# ── Score badges ──────────────────────────────────────────────────────────────
-if scores:
+    # ── Score badges ─────────────────────────────────────────────────────────
     c1, c2, c3, _, _ = st.columns([1, 1, 1, 1, 1])
 
     def _badge(col, label, key):
@@ -1413,6 +1414,7 @@ if scores:
     _badge(c1, "Segurança ULS", "seguranca_uls")
     _badge(c2, "Serviço ELS", "servico_els")
     _badge(c3, "Fundações", "fundacoes")
+    st.divider()
 
 st.divider()
 
@@ -1442,44 +1444,47 @@ _beam_type_labels = {"frame": "Pórtico", "lintel": "Lintel/Estore", "vct": "VCT
 
 # ── Resumo ────────────────────────────────────────────────────────────────────
 with tab_res:
-    mc = st.columns(5)
-    mc[0].metric("Pilares",   len(p.columns))
-    mc[1].metric("Vigas",     len(p.beams))
-    mc[2].metric("Lajes",     len(p.slabs))
-    mc[3].metric("Sapatas",   len(p.footings))
-    mc[4].metric("Sap. Corridas", len(getattr(p, 'continuous_footings', []) or []))
-    mc2 = st.columns(5)
-    mc2[0].metric("V. Amarração", len(p.tie_beams))
-    mc2[1].metric("Paredes",  len(p.walls))
-    mc2[2].metric("Muros",    len(getattr(p, 'retaining_walls', []) or []))
-    mc2[3].metric("L. Fungi.", len(p.flat_slabs))
-    mc2[4].metric("Escadas",  len(p.stairs))
+    if p:
+        mc = st.columns(5)
+        mc[0].metric("Pilares",   len(p.columns))
+        mc[1].metric("Vigas",     len(p.beams))
+        mc[2].metric("Lajes",     len(p.slabs))
+        mc[3].metric("Sapatas",   len(p.footings))
+        mc[4].metric("Sap. Corridas", len(getattr(p, 'continuous_footings', []) or []))
+        mc2 = st.columns(5)
+        mc2[0].metric("V. Amarração", len(p.tie_beams))
+        mc2[1].metric("Paredes",  len(p.walls))
+        mc2[2].metric("Muros",    len(getattr(p, 'retaining_walls', []) or []))
+        mc2[3].metric("L. Fungi.", len(p.flat_slabs))
+        mc2[4].metric("Escadas",  len(p.stairs))
 
-    if scores:
-        st.subheader("Score global")
-        for label, key in [
-            ("Segurança ULS", "seguranca_uls"),
-            ("Serviço ELS", "servico_els"),
-            ("Fundações", "fundacoes"),
-        ]:
-            v = scores.get(key, 0.0)
-            st.write(f"**{label}:** {v:.2f}")
-            st.progress(min(v, 1.0))
+        if scores:
+            st.subheader("Score global")
+            for label, key in [
+                ("Segurança ULS", "seguranca_uls"),
+                ("Serviço ELS", "servico_els"),
+                ("Fundações", "fundacoes"),
+            ]:
+                v = scores.get(key, 0.0)
+                st.write(f"**{label}:** {v:.2f}")
+                st.progress(min(v, 1.0))
 
-    if p.tie_beams:
-        st.subheader("Vigas de amarração / equilíbrio")
-        tie_rows = [
-            {
-                "ID": t.id,
-                "Ligação": f"{t.start_footing_id} → {t.end_footing_id}",
-                "Vão (m)": round(t.span_m, 2),
-                "T (kN)": round(t.tie_force_kn, 2),
-                "As req (cm²)": round(t.required_as_cm2, 2),
-                "Adotar": t.adopted_bars,
-            }
-            for t in p.tie_beams
-        ]
-        st.dataframe(pd.DataFrame(tie_rows), use_container_width=True, hide_index=True)
+        if p.tie_beams:
+            st.subheader("Vigas de amarração / equilíbrio")
+            tie_rows = [
+                {
+                    "ID": t.id,
+                    "Ligação": f"{t.start_footing_id} → {t.end_footing_id}",
+                    "Vão (m)": round(t.span_m, 2),
+                    "T (kN)": round(t.tie_force_kn, 2),
+                    "As req (cm²)": round(t.required_as_cm2, 2),
+                    "Adotar": t.adopted_bars,
+                }
+                for t in p.tie_beams
+            ]
+            st.dataframe(pd.DataFrame(tie_rows), use_container_width=True, hide_index=True)
+    else:
+        st.info("Corre o cálculo para ver o resumo.", icon="ℹ️")
 
 # ── Pórticos ──────────────────────────────────────────────────────────────────
 with tab_porticos:
@@ -1605,7 +1610,7 @@ with tab_porticos:
     # Deduplicate slabs from project + manual
     _seen_pt = set()
     _piso_slab_ids, _cob_slab_ids = [], []
-    for _s in list(p.slabs) + list(st.session_state.manual_slabs):
+    for _s in list(p.slabs if p else []) + list(st.session_state.manual_slabs):
         if _s.id in _seen_pt:
             continue
         _seen_pt.add(_s.id)
@@ -1617,7 +1622,7 @@ with tab_porticos:
     # Beam lookup by portico_id (for results display only)
     _beam_by_pid: dict = {}
     _other_beams: list = []
-    for _b in p.beams:
+    for _b in (p.beams if p else []):
         _bpid = (getattr(_b, "portico_id", "") or "").strip()
         _btype = getattr(_b, "beam_type", BeamType.FRAME)
         if _btype == BeamType.FRAME and _bpid:
@@ -1670,7 +1675,7 @@ with tab_porticos:
 
             # Pórtico elevation drawing
             try:
-                _pt_fig = _draw_portico(_pid, _tramos, p.columns)
+                _pt_fig = _draw_portico(_pid, _tramos, p.columns if p else [])
                 st.pyplot(_pt_fig, use_container_width=True)
                 plt.close(_pt_fig)
             except Exception as _pt_draw_err:
@@ -1751,7 +1756,7 @@ with tab_porticos:
             st.divider()
 
     # All FRAME beams without a portico_id assigned
-    _untagged_frame = [_b for _b in p.beams
+    _untagged_frame = [_b for _b in (p.beams if p else [])
                        if getattr(_b, "beam_type", BeamType.FRAME) == BeamType.FRAME
                        and not (getattr(_b, "portico_id", "") or "").strip()]
     if _untagged_frame:
@@ -1796,9 +1801,11 @@ with tab_porticos:
 
 # ── Vigas de Fundação ─────────────────────────────────────────────────────────
 with tab_vfund:
-    _cont_footings = getattr(p, 'continuous_footings', []) or []
+    _cont_footings = (getattr(p, 'continuous_footings', []) or []) if p else []
 
-    if p.tie_beams:
+    if not p:
+        st.info("Corre o cálculo para ver os resultados.", icon="ℹ️")
+    elif p.tie_beams:
         st.subheader("🔗 Vigas de amarração / equilíbrio (CB.)")
         st.caption("Vigas de amarração geradas automaticamente entre sapatas excêntricas (EC2 §9.10.2 — força de tração mínima).")
         _tb_rows = []
@@ -1842,52 +1849,55 @@ with tab_vfund:
 
 # ── Vigas ─────────────────────────────────────────────────────────────────────
 with tab_vigas:
-    # Editor: set max_height_cm per beam (for caixa de estore)
-    _beams_with_limit = [b for b in p.beams if getattr(b, 'max_height_cm', 0.0) > 0]
-    with st.expander(f"✏️ Editar restrições de altura (caixa de estore) — {len(_beams_with_limit)} viga(s) com limite"):
-        st.caption("Define altura máxima para vigas em caixa de estore. 0 = sem restrição.")
-        _bec_cols = st.columns(min(4, max(1, len(p.beams))))
-        for _bi, _beam in enumerate(p.beams):
-            _bec = _bec_cols[_bi % len(_bec_cols)]
-            _cur_mh = float(getattr(_beam, 'max_height_cm', 0.0))
-            _new_mh = _bec.number_input(
-                f"{_beam.id} (cm)", value=_cur_mh, min_value=0.0, step=5.0,
-                key=f"mh_{_beam.id}", help="0 = sem restrição de altura"
-            )
-            if _new_mh != _cur_mh:
-                _beam.max_height_cm = _new_mh
+    if not p:
+        st.info("Corre o cálculo para ver os resultados.", icon="ℹ️")
+    else:
+        # Editor: set max_height_cm per beam (for caixa de estore)
+        _beams_with_limit = [b for b in p.beams if getattr(b, 'max_height_cm', 0.0) > 0]
+        with st.expander(f"✏️ Editar restrições de altura (caixa de estore) — {len(_beams_with_limit)} viga(s) com limite"):
+            st.caption("Define altura máxima para vigas em caixa de estore. 0 = sem restrição.")
+            _bec_cols = st.columns(min(4, max(1, len(p.beams))))
+            for _bi, _beam in enumerate(p.beams):
+                _bec = _bec_cols[_bi % len(_bec_cols)]
+                _cur_mh = float(getattr(_beam, 'max_height_cm', 0.0))
+                _new_mh = _bec.number_input(
+                    f"{_beam.id} (cm)", value=_cur_mh, min_value=0.0, step=5.0,
+                    key=f"mh_{_beam.id}", help="0 = sem restrição de altura"
+                )
+                if _new_mh != _cur_mh:
+                    _beam.max_height_cm = _new_mh
 
-    rows = []
-    for b in p.beams:
-        r = b.result
-        rr = b.reinforcement_result or {}
-        bt_label = _beam_type_labels.get(getattr(b, 'beam_type', 'frame'), getattr(b, 'beam_type', 'frame'))
-        mh = getattr(b, 'max_height_cm', 0.0)
-        rows.append({
-            "ID": b.id,
-            "Pórtico": getattr(b, 'portico_id', '') or "-",
-            "Tipo": bt_label,
-            "Nós": f"{b.start_node}→{b.end_node}",
-            "b×h (cm)": f"{int(b.width_cm)}×{int(b.height_cm)}",
-            "h.max (cm)": f"{int(mh)}" if mh > 0 else "-",
-            "Span (m)": round(b.span_m, 2),
-            "Msd (kNm)": round(r.msd_knm, 2) if r else "-",
-            "MRd (kNm)": round(getattr(r, "mrd_knm", 0.0), 2) if r else "-",
-            "Vsd (kN)": round(r.vsd_kn, 2) if r else "-",
-            "VRd (kN)": round(getattr(r, "vrd_kn", 0.0), 2) if r else "-",
-            "As req (cm²)": round(r.required_as_cm2, 2) if r else "-",
-            "Armadura": rr.get("bottom_text", "-"),
-            "Estribos": rr.get("stirrups_text", "-"),
-            "U. Flexão": round(getattr(r, "bending_utilization", 0.0), 2) if r else "-",
-            "U. Corte": round(r.shear_utilization, 2) if r else "-",
-            "U. Flecha": round(r.deflection_utilization, 2) if r else "-",
-            "U. Fissura": round(r.crack_utilization, 2) if r else "-",
-        })
-    df_beams = pd.DataFrame(rows)
-    st.dataframe(
-        style_df(df_beams, ["U. Flexão", "U. Corte", "U. Flecha", "U. Fissura"]),
-        use_container_width=True, hide_index=True,
-    )
+        rows = []
+        for b in p.beams:
+            r = b.result
+            rr = b.reinforcement_result or {}
+            bt_label = _beam_type_labels.get(getattr(b, 'beam_type', 'frame'), getattr(b, 'beam_type', 'frame'))
+            mh = getattr(b, 'max_height_cm', 0.0)
+            rows.append({
+                "ID": b.id,
+                "Pórtico": getattr(b, 'portico_id', '') or "-",
+                "Tipo": bt_label,
+                "Nós": f"{b.start_node}→{b.end_node}",
+                "b×h (cm)": f"{int(b.width_cm)}×{int(b.height_cm)}",
+                "h.max (cm)": f"{int(mh)}" if mh > 0 else "-",
+                "Span (m)": round(b.span_m, 2),
+                "Msd (kNm)": round(r.msd_knm, 2) if r else "-",
+                "MRd (kNm)": round(getattr(r, "mrd_knm", 0.0), 2) if r else "-",
+                "Vsd (kN)": round(r.vsd_kn, 2) if r else "-",
+                "VRd (kN)": round(getattr(r, "vrd_kn", 0.0), 2) if r else "-",
+                "As req (cm²)": round(r.required_as_cm2, 2) if r else "-",
+                "Armadura": rr.get("bottom_text", "-"),
+                "Estribos": rr.get("stirrups_text", "-"),
+                "U. Flexão": round(getattr(r, "bending_utilization", 0.0), 2) if r else "-",
+                "U. Corte": round(r.shear_utilization, 2) if r else "-",
+                "U. Flecha": round(r.deflection_utilization, 2) if r else "-",
+                "U. Fissura": round(r.crack_utilization, 2) if r else "-",
+            })
+        df_beams = pd.DataFrame(rows)
+        st.dataframe(
+            style_df(df_beams, ["U. Flexão", "U. Corte", "U. Flecha", "U. Fissura"]),
+            use_container_width=True, hide_index=True,
+        )
 
 # ── Pilares ───────────────────────────────────────────────────────────────────
 with tab_pilares:
@@ -1970,50 +1980,53 @@ with tab_pilares:
         _info_cols[3].metric("H entre pisos", f"{_cc_tab['h_piso']:.2f} m")
         if _cont_tab:
             st.caption(f"Sapata corrida: {', '.join(_cont_tab)} | "
-                       f"Sapatas isoladas: {', '.join(c.id for c in p.columns if c.id not in _cont_tab)}")
+                       f"Sapatas isoladas: {', '.join(c.id for c in (p.columns if p else []) if c.id not in _cont_tab)}")
         st.divider()
 
-    # Editor: set stops_at per column
-    with st.expander("✏️ Editar nível dos pilares (termina em piso / cobertura)"):
-        st.caption("Pilares que terminam na laje de piso não aparecem no nível de Cobertura do quadro.")
-        _n_cols = min(4, len(p.columns))
-        _col_editor_cols = st.columns(_n_cols) if _n_cols > 0 else []
-        for _ci, _col in enumerate(p.columns):
-            _ec = _col_editor_cols[_ci % _n_cols] if _col_editor_cols else st
-            _current = getattr(_col, 'stops_at', 'cobertura')
-            _new = _ec.selectbox(
-                _col.id,
-                options=["cobertura", "piso"],
-                index=0 if _current == "cobertura" else 1,
-                key=f"stops_at_{_col.id}",
-                label_visibility="visible",
-            )
-            if _new != _current:
-                _col.stops_at = _new
+    if not p:
+        st.info("Corre o cálculo para ver os resultados.", icon="ℹ️")
+    else:
+        # Editor: set stops_at per column
+        with st.expander("✏️ Editar nível dos pilares (termina em piso / cobertura)"):
+            st.caption("Pilares que terminam na laje de piso não aparecem no nível de Cobertura do quadro.")
+            _n_cols = min(4, len(p.columns))
+            _col_editor_cols = st.columns(_n_cols) if _n_cols > 0 else []
+            for _ci, _col in enumerate(p.columns):
+                _ec = _col_editor_cols[_ci % _n_cols] if _col_editor_cols else st
+                _current = getattr(_col, 'stops_at', 'cobertura')
+                _new = _ec.selectbox(
+                    _col.id,
+                    options=["cobertura", "piso"],
+                    index=0 if _current == "cobertura" else 1,
+                    key=f"stops_at_{_col.id}",
+                    label_visibility="visible",
+                )
+                if _new != _current:
+                    _col.stops_at = _new
 
-    rows = []
-    for c in p.columns:
-        r = c.result
-        rows.append({
-            "ID": c.id,
-            "Termina em": getattr(c, 'stops_at', 'cobertura').capitalize(),
-            "x (m)": round(c.x, 2),
-            "y (m)": round(c.y, 2),
-            "Secção": c.label(),
-            "Forma": c.shape,
-            "h (m)": round(c.height_m, 2),
-            "Nsd (kN)": round(r.nsd_kn, 2) if r else "-",
-            "Nrd (kN)": round(r.nrd_kn, 2) if r else "-",
-            "As req (cm²)": round(r.required_as_cm2, 2) if r else "-",
-            "As adot (cm²)": round(r.adopted_as_cm2, 2) if r else "-",
-            "Esbelteza": round(r.slenderness, 1) if r else "-",
-            "Utilização": round(r.utilization, 2) if r else "-",
-        })
-    df_cols = pd.DataFrame(rows)
-    st.dataframe(
-        style_df(df_cols, ["Utilização"]),
-        use_container_width=True, hide_index=True,
-    )
+        rows = []
+        for c in p.columns:
+            r = c.result
+            rows.append({
+                "ID": c.id,
+                "Termina em": getattr(c, 'stops_at', 'cobertura').capitalize(),
+                "x (m)": round(c.x, 2),
+                "y (m)": round(c.y, 2),
+                "Secção": c.label(),
+                "Forma": c.shape,
+                "h (m)": round(c.height_m, 2),
+                "Nsd (kN)": round(r.nsd_kn, 2) if r else "-",
+                "Nrd (kN)": round(r.nrd_kn, 2) if r else "-",
+                "As req (cm²)": round(r.required_as_cm2, 2) if r else "-",
+                "As adot (cm²)": round(r.adopted_as_cm2, 2) if r else "-",
+                "Esbelteza": round(r.slenderness, 1) if r else "-",
+                "Utilização": round(r.utilization, 2) if r else "-",
+            })
+        df_cols = pd.DataFrame(rows)
+        st.dataframe(
+            style_df(df_cols, ["Utilização"]),
+            use_container_width=True, hide_index=True,
+        )
 
 # ── Shared helpers for slab tabs ──────────────────────────────────────────────
 _pavinorte_names = [n for n in sorted(CATALOG.keys()) if n.startswith(("V3-","V5-","2V"))]
@@ -2259,25 +2272,34 @@ with tab_lajes_alig:
                     st.rerun()
     st.divider()
 
-    _alig_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) == "ribbed"]
-    _render_slab_tab(_alig_slabs, "alig", show_catalog=True)
+    if not p:
+        st.info("Corre o cálculo para ver os resultados.", icon="ℹ️")
+    else:
+        _alig_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) == "ribbed"]
+        _render_slab_tab(_alig_slabs, "alig", show_catalog=True)
 
 # ── Lajes Maciças ─────────────────────────────────────────────────────────────
 with tab_lajes_mac:
-    _mac_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) in ("one_way", "cantilever")]
-    _render_slab_tab(_mac_slabs, "mac", show_catalog=False)
+    if not p:
+        st.info("Corre o cálculo para ver os resultados.", icon="ℹ️")
+    else:
+        _mac_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) in ("one_way", "cantilever")]
+        _render_slab_tab(_mac_slabs, "mac", show_catalog=False)
 
 # ── Lajes Armada em Cruz ──────────────────────────────────────────────────────
 with tab_lajes_cruz:
-    _cruz_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) == "two_way"]
-    _render_slab_tab(_cruz_slabs, "cruz", show_catalog=False)
+    if not p:
+        st.info("Corre o cálculo para ver os resultados.", icon="ℹ️")
+    else:
+        _cruz_slabs = [s for s in p.slabs if (s.slab_type.value if hasattr(s.slab_type, 'value') else str(s.slab_type)) == "two_way"]
+        _render_slab_tab(_cruz_slabs, "cruz", show_catalog=False)
 
 # ── Sapatas ───────────────────────────────────────────────────────────────────
 with tab_sapatas:
     # ── Sapata corrida do muro da cave ────────────────────────────────────────
     _cont_col_set = set(st.session_state.get("cols_in_cont_footing", []))
-    _rw_ids = [rw.id for rw in (p.retaining_walls or [])]
-    _sw_ids = [sw.id for sw in (p.walls or [])]
+    _rw_ids = [rw.id for rw in (p.retaining_walls if p else []) or []]
+    _sw_ids = [sw.id for sw in (p.walls if p else []) or []]
     _all_wall_ids = _rw_ids + _sw_ids
 
     if _cont_col_set or _all_wall_ids:
@@ -2299,52 +2321,55 @@ with tab_sapatas:
                     st.caption("Sem muros definidos.")
         st.divider()
 
-    # ── Sapatas isoladas ──────────────────────────────────────────────────────
-    _isol_ftgs = [f for f in p.footings if f.related_column_id not in _cont_col_set]
-    _cont_ftgs = [f for f in p.footings if f.related_column_id in _cont_col_set]
-    if _cont_ftgs:
-        st.caption(f"ℹ️ {len(_cont_ftgs)} pilar(es) em sapata corrida ({', '.join(f.related_column_id for f in _cont_ftgs)}) — mostrados separadamente acima.")
+    if not p:
+        st.info("Corre o cálculo para ver os resultados.", icon="ℹ️")
+    else:
+        # ── Sapatas isoladas ──────────────────────────────────────────────────────
+        _isol_ftgs = [f for f in p.footings if f.related_column_id not in _cont_col_set]
+        _cont_ftgs = [f for f in p.footings if f.related_column_id in _cont_col_set]
+        if _cont_ftgs:
+            st.caption(f"ℹ️ {len(_cont_ftgs)} pilar(es) em sapata corrida ({', '.join(f.related_column_id for f in _cont_ftgs)}) — mostrados separadamente acima.")
 
-    # Editor: toggle footing type (concentric ↔ eccentric)
-    _ftg_needs_ecc = [f for f in p.footings if f.result and f.result.needs_balance_beam]
-    with st.expander(f"✏️ Editar orientação das sapatas — {len(_ftg_needs_ecc)} sapata(s) com viga de equilíbrio"):
-        st.caption("Sapatas excêntricas são usadas em bordas de lote onde não é possível centrar a sapata no pilar.")
-        from core.model import FootingType
-        _ftg_cols = st.columns(min(4, max(1, len(p.footings))))
-        for _fi, _ftg in enumerate(p.footings):
-            _fc = _ftg_cols[_fi % len(_ftg_cols)]
-            _cur_ft = getattr(_ftg, 'footing_type', FootingType.CONCENTRIC)
-            _cur_label = "Excêntrica" if _cur_ft == FootingType.ECCENTRIC else "Concêntrica"
-            _new_label = _fc.selectbox(
-                _ftg.id, options=["Concêntrica", "Excêntrica"],
-                index=1 if _cur_ft == FootingType.ECCENTRIC else 0,
-                key=f"ftype_{_ftg.id}",
-            )
-            _new_ft = FootingType.ECCENTRIC if _new_label == "Excêntrica" else FootingType.CONCENTRIC
-            if _new_ft != _cur_ft:
-                _ftg.footing_type = _new_ft
+        # Editor: toggle footing type (concentric ↔ eccentric)
+        _ftg_needs_ecc = [f for f in p.footings if f.result and f.result.needs_balance_beam]
+        with st.expander(f"✏️ Editar orientação das sapatas — {len(_ftg_needs_ecc)} sapata(s) com viga de equilíbrio"):
+            st.caption("Sapatas excêntricas são usadas em bordas de lote onde não é possível centrar a sapata no pilar.")
+            from core.model import FootingType
+            _ftg_cols = st.columns(min(4, max(1, len(p.footings))))
+            for _fi, _ftg in enumerate(p.footings):
+                _fc = _ftg_cols[_fi % len(_ftg_cols)]
+                _cur_ft = getattr(_ftg, 'footing_type', FootingType.CONCENTRIC)
+                _cur_label = "Excêntrica" if _cur_ft == FootingType.ECCENTRIC else "Concêntrica"
+                _new_label = _fc.selectbox(
+                    _ftg.id, options=["Concêntrica", "Excêntrica"],
+                    index=1 if _cur_ft == FootingType.ECCENTRIC else 0,
+                    key=f"ftype_{_ftg.id}",
+                )
+                _new_ft = FootingType.ECCENTRIC if _new_label == "Excêntrica" else FootingType.CONCENTRIC
+                if _new_ft != _cur_ft:
+                    _ftg.footing_type = _new_ft
 
-    rows = []
-    for f in p.footings:
-        r = f.result
-        rows.append({
-            "ID": f.id,
-            "Tipo": "Excêntrica" if f.footing_type == FootingType.ECCENTRIC else "Concêntrica",
-            "Dim. (cm)": f"{int(f.width_a_cm)}×{int(f.width_b_cm)}×{int(f.height_cm)}",
-            "Nsd (kN)": round(r.nsd_kn, 2),
-            "σmin (MPa)": round(r.sigma_min_mpa, 3),
-            "σmax (MPa)": round(r.sigma_max_mpa, 3),
-            "U. Solo": round(r.soil_utilization, 2),
-            "U. Punç.": round(r.punching_utilization, 2),
-            "Levantamento": "⚠️ Sim" if r.uplift_detected else "OK",
-            "Viga Eq.": "⚠️ Sim" if r.needs_balance_beam else "Não",
-            "As adot (cm²)": round(r.adopted_as_cm2, 2),
-        })
-    df_ftg = pd.DataFrame(rows)
-    st.dataframe(
-        style_df(df_ftg, ["U. Solo", "U. Punç."]),
-        use_container_width=True, hide_index=True,
-    )
+        rows = []
+        for f in p.footings:
+            r = f.result
+            rows.append({
+                "ID": f.id,
+                "Tipo": "Excêntrica" if f.footing_type == FootingType.ECCENTRIC else "Concêntrica",
+                "Dim. (cm)": f"{int(f.width_a_cm)}×{int(f.width_b_cm)}×{int(f.height_cm)}",
+                "Nsd (kN)": round(r.nsd_kn, 2),
+                "σmin (MPa)": round(r.sigma_min_mpa, 3),
+                "σmax (MPa)": round(r.sigma_max_mpa, 3),
+                "U. Solo": round(r.soil_utilization, 2),
+                "U. Punç.": round(r.punching_utilization, 2),
+                "Levantamento": "⚠️ Sim" if r.uplift_detected else "OK",
+                "Viga Eq.": "⚠️ Sim" if r.needs_balance_beam else "Não",
+                "As adot (cm²)": round(r.adopted_as_cm2, 2),
+            })
+        df_ftg = pd.DataFrame(rows)
+        st.dataframe(
+            style_df(df_ftg, ["U. Solo", "U. Punç."]),
+            use_container_width=True, hide_index=True,
+        )
 
 # ── Cálculo de Esforços ───────────────────────────────────────────────────────
 with tab_esforcos:
@@ -2458,7 +2483,7 @@ with tab_paredes:
                     st.rerun()
     st.divider()
 
-    if not p.walls:
+    if not p or not p.walls:
         st.info("Sem paredes estruturais calculadas. Adiciona acima e clica ▶ Correr cálculo.")
     else:
         rows = []
@@ -2657,7 +2682,7 @@ with tab_fungi:
                     st.rerun()
     st.divider()
 
-    if not p.flat_slabs:
+    if not p or not p.flat_slabs:
         st.info("Sem lajes fungiformes calculadas. Adiciona acima e clica ▶ Correr cálculo.")
     else:
         rows = []
@@ -2724,7 +2749,7 @@ with tab_esc:
                     st.rerun()
     st.divider()
 
-    if not p.stairs:
+    if not p or not p.stairs:
         st.info("Sem escadas calculadas. Adiciona acima e clica ▶ Correr cálculo.")
     else:
         rows = []
@@ -2753,39 +2778,42 @@ with tab_esc:
 
 # ── Alertas ───────────────────────────────────────────────────────────────────
 with tab_alertas:
-    warnings = [a for a in p.alerts if a.level == "warning"]
-    criticals = [a for a in p.alerts if a.level in ("critical", "error")]
-    infos = [a for a in p.alerts if a.level == "info"]
+    if not p:
+        st.info("Corre o cálculo para ver os alertas.", icon="ℹ️")
+    else:
+        warnings = [a for a in p.alerts if a.level == "warning"]
+        criticals = [a for a in p.alerts if a.level in ("critical", "error")]
+        infos = [a for a in p.alerts if a.level == "info"]
 
-    if not p.alerts:
-        st.success("Sem alertas.")
+        if not p.alerts:
+            st.success("Sem alertas.")
 
-    if criticals:
-        st.subheader(f"🚨 Críticos ({len(criticals)})")
-        for a in criticals:
-            st.error(a.message)
+        if criticals:
+            st.subheader(f"🚨 Críticos ({len(criticals)})")
+            for a in criticals:
+                st.error(a.message)
 
-    if warnings:
-        st.subheader(f"⚠️ Avisos ({len(warnings)})")
-        for a in warnings:
-            st.warning(a.message)
+        if warnings:
+            st.subheader(f"⚠️ Avisos ({len(warnings)})")
+            for a in warnings:
+                st.warning(a.message)
 
-    if infos:
-        with st.expander(f"ℹ️ Informativos ({len(infos)})"):
-            for a in infos:
-                st.info(a.message)
+        if infos:
+            with st.expander(f"ℹ️ Informativos ({len(infos)})"):
+                for a in infos:
+                    st.info(a.message)
 
-    if p.advice_messages:
-        with st.expander("🧠 Modo Engenheiro"):
-            for m in p.advice_messages:
-                st.write(m)
+        if p.advice_messages:
+            with st.expander("🧠 Modo Engenheiro"):
+                for m in p.advice_messages:
+                    st.write(m)
 
 # ── Planta ────────────────────────────────────────────────────────────────────
 with tab_planta:
     if st.session_state.png_bytes:
         st.image(
             st.session_state.png_bytes,
-            caption=f"Planta estrutural — {p.name}",
+            caption=f"Planta estrutural — {p.name if p else ''}",
             use_container_width=True,
         )
     else:
