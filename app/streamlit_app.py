@@ -686,46 +686,70 @@ def _draw_portico(pid: str, tramos: list, project_columns: list):
     return fig
 
 
-# ─── Top action bar ───────────────────────────────────────────────────────────
+# ─── Top menu bar ────────────────────────────────────────────────────────────
 _pi_hdr = st.session_state.get("project_info") or {}
-_ab1, _ab2, _ab3, _ab4, _ab5, _ab_space, _ab_user = st.columns([1.2, 1, 1, 1.2, 1.2, 4, 2])
-with _ab1:
-    if st.button("＋ Novo", use_container_width=True, help="Novo projeto"):
+from core.persistence import save_inputs as _sav_ab
+_ab_snap = {k: st.session_state.get(k) for k in ["manual_slabs","manual_retaining_walls",
+    "manual_flat_slabs","manual_stairs","col_config","cols_in_cont_footing",
+    "portico_slab_map","portico_tramos","beam_overrides","project_info"]}
+_sav_bytes = _sav_ab(_ab_snap)
+_requ_hdr = (_pi_hdr.get("requerente") or "Projeto").strip()
+
+# Logo + RAPTOR + File menu items + user profile in one row
+_mh_logo, _mh_title, _mh_new, _mh_open, _mh_save, _mh_saveas, _mh_dxf, _mh_rel, _mh_imp, _mh_space, _mh_user = st.columns(
+    [0.35, 0.8, 0.55, 0.55, 0.55, 0.65, 0.55, 0.75, 0.65, 2.5, 1.6])
+with _mh_logo:
+    if _logo_b64:
+        st.markdown(f"<img src='data:image/jpeg;base64,{_logo_b64}' style='width:32px;height:32px;object-fit:contain;margin-top:4px'>",
+                    unsafe_allow_html=True)
+with _mh_title:
+    st.markdown("<span style='color:#c9a84c;font-size:1rem;font-weight:800;letter-spacing:.14em;line-height:2.2'>RAPTOR</span>",
+                unsafe_allow_html=True)
+with _mh_new:
+    if st.button("New", use_container_width=True, help="Novo projeto"):
         st.session_state.project_info = None
         st.rerun()
-with _ab2:
-    from core.persistence import save_inputs as _sav_ab
-    _ab_snap = {k: st.session_state.get(k) for k in ["manual_slabs","manual_retaining_walls",
-        "manual_flat_slabs","manual_stairs","col_config","cols_in_cont_footing",
-        "portico_slab_map","portico_tramos","beam_overrides","project_info"]}
-    st.download_button("💾 Guardar", data=_sav_ab(_ab_snap),
-        file_name=f"{(_pi_hdr.get('requerente') or 'projeto').replace(' ','_')}.raptor",
-        mime="application/json", use_container_width=True, help="Guardar projeto")
-with _ab3:
+with _mh_open:
+    st.button("Open", use_container_width=True, disabled=True, help="Usa 'Abrir projeto' na sidebar")
+with _mh_save:
+    st.download_button("Save", data=_sav_bytes,
+        file_name=f"{_requ_hdr.replace(' ','_')}.raptor",
+        mime="application/json", use_container_width=True)
+with _mh_saveas:
+    st.download_button("Save as", data=_sav_bytes,
+        file_name=f"{_requ_hdr.replace(' ','_')}_v2.raptor",
+        mime="application/json", use_container_width=True)
+with _mh_dxf:
     if st.session_state.get("dxf_bytes"):
-        st.download_button("📐 DXF", data=st.session_state.dxf_bytes,
-            file_name="estrutura.dxf", mime="application/dxf",
-            use_container_width=True, help="Exportar DXF")
+        st.download_button("DXF", data=st.session_state.dxf_bytes,
+            file_name="estrutura.dxf", mime="application/dxf", use_container_width=True)
     else:
-        st.button("📐 DXF", disabled=True, use_container_width=True, help="Correr cálculo primeiro")
-with _ab4:
+        st.button("DXF", disabled=True, use_container_width=True, help="Correr cálculo primeiro")
+with _mh_rel:
     if st.session_state.get("docx_bytes"):
-        st.download_button("📄 Relatório", data=st.session_state.docx_bytes,
-            file_name="relatorio.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        st.download_button("Relatório", data=st.session_state.docx_bytes,
+            file_name="relatorio.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             use_container_width=True)
     else:
-        st.button("📄 Relatório", disabled=True, use_container_width=True, help="Correr cálculo primeiro")
-with _ab5:
-    st.button("🖨 Imprimir", disabled=True, use_container_width=True, help="Em desenvolvimento")
-with _ab_user:
-    _requ = (_pi_hdr.get("requerente") or "").strip()
-    _obra = (_pi_hdr.get("morada_obra") or "").strip()
-    if _requ or _obra:
-        st.markdown(f"<div style='text-align:right;padding-top:6px'>"
-                    f"<span style='color:#c9a84c;font-size:0.75rem;font-weight:600'>{_requ}</span>"
-                    f"<span style='color:#444;font-size:0.7rem'> · {_obra}</span></div>",
-                    unsafe_allow_html=True)
-st.markdown("<div style='height:1px;background:#c9a84c22;margin:0 0 12px 0'></div>", unsafe_allow_html=True)
+        st.button("Relatório", disabled=True, use_container_width=True, help="Correr cálculo primeiro")
+with _mh_imp:
+    st.button("Imprimir", disabled=True, use_container_width=True, help="Em desenvolvimento")
+with _mh_user:
+    _obra_hdr = (_pi_hdr.get("morada_obra") or "").strip()
+    _tipo_hdr = (_pi_hdr.get("tipo_obra") or "").strip()
+    _initials = "".join(w[0].upper() for w in _requ_hdr.split()[:2]) if _requ_hdr else "?"
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-top:2px">
+      <div style="text-align:right">
+        <div style="color:#e8e8e8;font-size:0.78rem;font-weight:600;line-height:1.2">{_requ_hdr}</div>
+        <div style="color:#555;font-size:0.62rem">{_tipo_hdr or 'Administrador'}</div>
+      </div>
+      <div style="width:32px;height:32px;border-radius:50%;background:#c9a84c22;border:1px solid #c9a84c44;
+                  display:flex;align-items:center;justify-content:center;
+                  color:#c9a84c;font-size:0.75rem;font-weight:700;flex-shrink:0">{_initials}</div>
+    </div>""", unsafe_allow_html=True)
+st.markdown("<div style='height:1px;background:#1e2836;margin:0 0 10px 0'></div>", unsafe_allow_html=True)
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -787,7 +811,78 @@ with st.sidebar:
                 st.session_state.selected_specialty = _sp
                 st.rerun()
 
-    st.markdown("<div style='height:1px;background:#c9a84c22;margin:8px 0'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:1px;background:#1e2836;margin:10px 0'></div>", unsafe_allow_html=True)
+
+    # ── Segunda secção de navegação ───────────────────────────────────────────
+    _gestao_items = [
+        ("Medições",       "📏"),
+        ("Peças Escritas", "📝"),
+        ("Relatórios",     "📄"),
+        ("Planeamento",    "📅"),
+        ("Orçamento",      "💰"),
+    ]
+    for _gi, _gicon in _gestao_items:
+        st.markdown(
+            f"""<div style="border-left:3px solid #141414;padding:5px 10px;margin:1px 0;
+                color:#2a2a2a;font-size:0.74rem;display:flex;align-items:center;gap:7px">
+                <span style="font-size:0.85rem">{_gicon}</span>
+                <span style="flex:1">{_gi}</span>
+                <span style="font-size:0.55rem;color:#1e1e1e;background:#111;padding:1px 4px;border-radius:6px">em breve</span>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:1px;background:#1e2836;margin:10px 0'></div>", unsafe_allow_html=True)
+
+    # ── Dashboard do Projeto ──────────────────────────────────────────────────
+    st.markdown("<p style='color:#c9a84c;font-size:0.6rem;letter-spacing:.15em;margin:4px 12px 8px 12px'>DASHBOARD DO PROJETO</p>",
+                unsafe_allow_html=True)
+    _proj_dash = st.session_state.get("project")
+    _scores_dash = st.session_state.get("scores", {})
+    # Specialty completion (placeholders until real data exists)
+    _dash_specs = [
+        ("Arquitetura",  "#4a90d9",  100),
+        ("Estruturas",   "#c9a84c",  int(_scores_dash.get("seguranca_uls", 0) * 100) if _scores_dash else 0),
+        ("Águas",        "#29b6f6",  0),
+        ("Esgotos",      "#ab47bc",  0),
+        ("ITED",         "#ffa726",  0),
+        ("SCIE",         "#ef5350",  0),
+        ("AVAC",         "#26c6da",  0),
+        ("Térmica",      "#ff7043",  0),
+    ]
+    _overall = int(sum(s for _,_,s in _dash_specs) / len(_dash_specs))
+    try:
+        import matplotlib.pyplot as _mpld
+        import matplotlib.patches as _mpatd
+        import numpy as _npd
+        _fig_d, _ax_d = _mpld.subplots(figsize=(2.4, 2.4))
+        _fig_d.patch.set_facecolor("#0a0e14")
+        _ax_d.set_facecolor("#0a0e14")
+        _wedge_sizes = [_overall, 100 - _overall]
+        _wedge_colors = ["#c9a84c", "#1a1a2a"]
+        _wedges, _ = _ax_d.pie(_wedge_sizes, colors=_wedge_colors,
+                                startangle=90, counterclock=False,
+                                wedgeprops={"width": 0.38, "edgecolor": "#0a0e14", "linewidth": 1.5})
+        _ax_d.text(0, 0, f"{_overall}%", ha="center", va="center",
+                   color="#c9a84c", fontsize=14, fontweight="bold")
+        _ax_d.set_aspect("equal")
+        _mpld.tight_layout(pad=0)
+        st.pyplot(_fig_d, use_container_width=True)
+        _mpld.close(_fig_d)
+    except Exception:
+        st.caption(f"Conclusão: {_overall}%")
+    # Per-specialty legend
+    _dc1, _dc2 = st.columns(2)
+    for _i, (_sn, _sc, _sv) in enumerate(_dash_specs):
+        _col = _dc1 if _i % 2 == 0 else _dc2
+        _col.markdown(
+            f"<div style='display:flex;align-items:center;gap:4px;margin:1px 0'>"
+            f"<span style='width:8px;height:8px;border-radius:50%;background:{_sc};flex-shrink:0;display:inline-block'></span>"
+            f"<span style='color:#444;font-size:0.6rem;flex:1'>{_sn}</span>"
+            f"<span style='color:#555;font-size:0.6rem'>{_sv}%</span></div>",
+            unsafe_allow_html=True)
+
+    st.markdown("<div style='height:1px;background:#1e2836;margin:10px 0'></div>", unsafe_allow_html=True)
 
     # ── Dados do Trabalho (editável inline) ───────────────────────────────────
     _tipo_obra_opts_sb = ["Habitação", "Comércio", "Serviços", "Industrial", "Equipamento", "Outro"]
