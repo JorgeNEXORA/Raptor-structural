@@ -2174,6 +2174,16 @@ with tab_lajes_alig:
     _sl_lvl_opts  = ["piso", "cobertura"]
     _sl_dir_opts  = ["X", "Y"]
     _sl_zona_opts = list(_zona_map_sb.keys())
+    # ── Auto-corrige lajes com tipo errado (bug da versão anterior) ──────────
+    _wrong = [s for s in st.session_state.manual_slabs
+              if (s.slab_type.value if hasattr(s.slab_type,"value") else str(s.slab_type)) != "ribbed"]
+    if _wrong:
+        st.warning(f"⚠️ {len(_wrong)} laje(s) com tipo incorreto. Clica para corrigir para Aligeirada.")
+        if st.button("🔧 Corrigir todas para Aligeirada", key="fix_slab_types"):
+            for _s in st.session_state.manual_slabs:
+                _s.slab_type = SlabType("ribbed")
+            st.rerun()
+
     # ── Lista de lajes sempre visível ─────────────────────────────────────────
     _type_reverse_sb = {"ribbed": "Aligeirada", "one_way": "Maciça 1D",
                         "two_way": "Maciça 2D", "cantilever": "Consola"}
