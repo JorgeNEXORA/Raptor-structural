@@ -2174,13 +2174,15 @@ with tab_lajes_alig:
     _sl_lvl_opts  = ["piso", "cobertura"]
     _sl_dir_opts  = ["X", "Y"]
     _sl_zona_opts = list(_zona_map_sb.keys())
-    # ── Auto-corrige lajes com tipo errado (bug da versão anterior) ──────────
+    # ── Auto-corrige lajes aligeiradas com tipo errado (bug da versão anterior) ─
+    # Só flagra slabs que não começam por "LM" (as LM são maciças intencionais)
     _wrong = [s for s in st.session_state.manual_slabs
-              if (s.slab_type.value if hasattr(s.slab_type,"value") else str(s.slab_type)) != "ribbed"]
+              if (s.slab_type.value if hasattr(s.slab_type,"value") else str(s.slab_type)) != "ribbed"
+              and not s.id.upper().startswith("LM")]
     if _wrong:
-        st.warning(f"⚠️ {len(_wrong)} laje(s) com tipo incorreto. Clica para corrigir para Aligeirada.")
-        if st.button("🔧 Corrigir todas para Aligeirada", key="fix_slab_types"):
-            for _s in st.session_state.manual_slabs:
+        st.warning(f"⚠️ {len(_wrong)} laje(s) aligeirada(s) com tipo incorreto. Clica para corrigir.")
+        if st.button("🔧 Corrigir para Aligeirada", key="fix_slab_types"):
+            for _s in _wrong:
                 _s.slab_type = SlabType("ribbed")
             st.rerun()
 

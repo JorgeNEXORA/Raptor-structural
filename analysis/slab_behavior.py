@@ -30,6 +30,18 @@ class SlabBehaviorEstimator:
 
         direction = "x" if dx <= dy else "y"
 
+        # Lajes manuais (sem polígono DXF): preservar o tipo definido pelo utilizador
+        # Só estimar tipo para lajes vindas de DXF (têm polygon_points)
+        if not getattr(slab, "polygon_points", None):
+            if not slab.direction:
+                slab.direction = direction
+            return {
+                "dx": slab.span_m, "dy": slab.span_m,
+                "ratio": 1.0, "compactness": 1.0,
+                "slab_type": slab.slab_type.value if hasattr(slab.slab_type, "value") else str(slab.slab_type),
+                "direction": slab.direction or direction,
+            }
+
         # polígonos muito recortados mantêm one_way por segurança do MVP
         area = slab.area_m2 if slab.area_m2 else dx * dy
         compactness = area / (dx * dy) if dx * dy > 0 else 1.0
