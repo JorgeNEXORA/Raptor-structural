@@ -2342,7 +2342,7 @@ with tab_lajes_mac:
         _mac_dir_idx  = _mac_dir_opts.index(_pmac.get("direction","x").upper()) if _pmac.get("direction","x").upper() in _mac_dir_opts else 0
         _mac_fk = f"_mac_form_{'edit' if _is_editing_mac else 'new'}_{_pmac.get('id','')}"
         if st.session_state.get("_mac_form_last") != _mac_fk:
-            for _k in ("mf_type","mf_lvl","mf_dir","mf_zona","mf_rev","mf_div","mf_psi1","mf_id","mf_span","mf_thk","mf_d"):
+            for _k in ("mf_type","mf_lvl","mf_dir","mf_zona","mf_rev","mf_div","mf_id","mf_span","mf_thk","mf_d"):
                 st.session_state.pop(_k, None)
             st.session_state["_mac_form_last"] = _mac_fk
         with st.form("form_add_mac_sb", clear_on_submit=True):
@@ -2355,11 +2355,9 @@ with tab_lajes_mac:
             _mac_lvl_sb  = _mb2.selectbox("Nível", _mac_lvl_opts, index=_mac_lvl_idx, key="mf_lvl")
             _mac_dir_sb  = _mb2.selectbox("Direção", _mac_dir_opts, index=_mac_dir_idx, key="mf_dir")
             _mac_zona_sb = _mb2.selectbox("Zona (Qk)", _mac_zona_opts, key="mf_zona")
-            _mc1, _mc2, _mc3 = st.columns(3)
-            _mac_rev_sb  = _mc1.number_input("Rev. (kN/m²)", value=float(_pmac.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1, help="Revestimentos", key="mf_rev")
-            _mac_div_sb  = _mc2.number_input("Div. (kN/m²)", value=float(_pmac.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1, help="Divisórias", key="mf_div")
-            _mac_psi1_sb = _mc3.number_input("ψ₁", value=float(_pmac.get("psi1", 0.3)), min_value=0.0, max_value=1.0, step=0.1,
-                                              help="SLS quasi-permanente (0.30 habitável, 0.70 armazém)", key="mf_psi1")
+            _mc1, _mc2 = st.columns(2)
+            _mac_rev_sb = _mc1.number_input("Rev. (kN/m²)", value=float(_pmac.get("rev_kn_m2", 1.0)), min_value=0.0, step=0.1, help="Revestimentos", key="mf_rev")
+            _mac_div_sb = _mc2.number_input("Div. (kN/m²)", value=float(_pmac.get("div_kn_m2", 1.5)), min_value=0.0, step=0.1, help="Divisórias", key="mf_div")
             _mac_lbl = "✅ Guardar alterações" if _is_editing_mac else "➕ Adicionar laje maciça"
             if st.form_submit_button(_mac_lbl):
                 _gk_mac, _qk_mac = _zona_map_mac[_mac_zona_sb]
@@ -2374,7 +2372,6 @@ with tab_lajes_mac:
                     level=_mac_lvl_sb,
                     rev_kn_m2=float(_mac_rev_sb),
                     div_kn_m2=float(_mac_div_sb),
-                    psi1=float(_mac_psi1_sb),
                 )
                 st.session_state.manual_slabs.append(_ns_mac)
                 st.session_state.pop("_prefill_slab_mac", None)
