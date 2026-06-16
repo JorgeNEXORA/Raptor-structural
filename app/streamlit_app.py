@@ -1792,8 +1792,6 @@ if gen_docx and st.session_state.project:
 
 
 # ─── Main content ─────────────────────────────────────────────────────────────
-st.title("🏗️ Raptor — Análise Estrutural")
-
 if "predim_results" in st.session_state and st.session_state["predim_results"]:
     st.subheader("📐 Pré-dimensionamento de pilares")
     pd_rows = []
@@ -1815,19 +1813,6 @@ if "predim_results" in st.session_state and st.session_state["predim_results"]:
     st.divider()
 
 if st.session_state.project is None:
-    st.info("Configura os parâmetros na barra lateral e clica **▶ Correr cálculo** para começar.")
-    st.markdown("""
-**Ficheiros de exemplo incluídos:**
-| Ficheiro | Descrição |
-|---|---|
-| `inputs/columns_sample.csv` | Pilares com geometria |
-| `inputs/beams_sample.csv` | Vigas |
-| `inputs/slabs_sample.csv` | Lajes |
-| `inputs/slab_loads_sample.csv` | Cargas de laje |
-| `inputs/modelo_base.dxf` | Planta DXF de exemplo |
-
-Se não fizeres upload de CSV, é usada uma **geometria demo** com 6 pilares.
-    """)
     st.stop()
 
 p: Project = st.session_state.project
