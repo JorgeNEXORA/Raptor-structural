@@ -2187,27 +2187,29 @@ with tab_lajes_alig:
                 _s.slab_type = SlabType("ribbed")
             st.rerun()
 
-    # ── Lista de lajes sempre visível ─────────────────────────────────────────
+    # ── Lista de lajes aligeiradas (só ribbed) ────────────────────────────────
     _type_reverse_sb = {"ribbed": "Aligeirada", "one_way": "Maciça 1D",
                         "two_way": "Maciça 2D", "cantilever": "Consola"}
-    if st.session_state.manual_slabs:
-        for _i, _ms in enumerate(st.session_state.manual_slabs):
+    _alig_manual = [(i, s) for i, s in enumerate(st.session_state.manual_slabs)
+                    if (s.slab_type.value if hasattr(s.slab_type,"value") else str(s.slab_type)) == "ribbed"]
+    if _alig_manual:
+        for _i, _ms in _alig_manual:
             _ca, _cb, _cc = st.columns([5, 1, 1])
             _ms_tp = _ms.slab_type.value if hasattr(_ms.slab_type, "value") else str(_ms.slab_type)
             _ca.caption(f"**{_ms.id}** {getattr(_ms,'level','piso')} | {_ms.span_m}m "
-                        f"h={int(_ms.thickness_cm)}cm  Rev={getattr(_ms,'rev_kn_m2',1.0)} "
-                        f"Div={getattr(_ms,'div_kn_m2',1.5)} [{_type_reverse_sb.get(_ms_tp, _ms_tp)}]")
+                        f"h={int(_ms.thickness_cm)}cm  Rev={getattr(_ms,'rev_kn_m2',0.0)} "
+                        f"Div={getattr(_ms,'div_kn_m2',0.0)} [{_type_reverse_sb.get(_ms_tp, _ms_tp)}]")
             if _cb.button("✏️", key=f"edit_slab_{_i}", help="Editar"):
                 st.session_state["_prefill_slab"] = {
                     "id": _ms.id, "span_m": _ms.span_m, "thickness_cm": _ms.thickness_cm,
                     "effective_depth_cm": _ms.effective_depth_cm,
-                    "slab_type_lbl": _type_reverse_sb.get(_ms_tp, "Maciça 1D"),
+                    "slab_type_lbl": _type_reverse_sb.get(_ms_tp, "Aligeirada"),
                     "level": getattr(_ms, "level", "piso"),
                     "direction": getattr(_ms, "direction", "x") or "x",
                     "gk_kn_m2": _ms.gk_kn_m2, "qk_kn_m2": _ms.qk_kn_m2,
                     "catalog_id": getattr(_ms, "catalog_id", None),
-                    "rev_kn_m2": getattr(_ms, "rev_kn_m2", 1.0),
-                    "div_kn_m2": getattr(_ms, "div_kn_m2", 1.5),
+                    "rev_kn_m2": getattr(_ms, "rev_kn_m2", 0.0),
+                    "div_kn_m2": getattr(_ms, "div_kn_m2", 0.0),
                     "psi1": getattr(_ms, "psi1", 0.3),
                 }
                 st.session_state.manual_slabs.pop(_i)
@@ -2216,13 +2218,13 @@ with tab_lajes_alig:
                 st.session_state.manual_slabs.pop(_i)
                 st.rerun()
     else:
-        st.caption("Sem lajes definidas. Usa o formulário abaixo para adicionar.")
+        st.caption("Sem lajes aligeiradas definidas. Usa o formulário abaixo para adicionar.")
 
     # ── Formulário adicionar / editar laje ────────────────────────────────────
     _pslab = st.session_state.get("_prefill_slab", {})
     _is_editing = bool(_pslab)
     _form_label = f"✏️ Editar laje {_pslab.get('id','')}" if _is_editing else "➕ Adicionar laje"
-    with st.expander(_form_label, expanded=_is_editing or len(st.session_state.manual_slabs) == 0):
+    with st.expander(_form_label, expanded=_is_editing or len(_alig_manual) == 0):
         _sl_lvl_idx   = _sl_lvl_opts.index(_pslab["level"]) if _pslab.get("level") in _sl_lvl_opts else 0
         _sl_dir_idx   = _sl_dir_opts.index(_pslab.get("direction", "x").upper()) if _pslab.get("direction", "x").upper() in _sl_dir_opts else 0
         _sl_cat_def   = _pslab.get("catalog_id") or "(automático)"
